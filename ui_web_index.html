@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>NET-CORE-CPS | Panel Multi-Maestro</title>
+    <title>NET-CORE-CPS | Multi-Coordinator Panel</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
     <style>
@@ -38,7 +38,7 @@
         .label-row .val{color:var(--primary);font-weight:700;font-family:'Orbitron';font-size:.95rem}
         input[type=range]{width:100%;-webkit-appearance:none;background:rgba(255,255,255,.05);height:6px;border-radius:5px;outline:none;margin:5px 0}
         input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;height:26px;width:26px;border-radius:50%;background:#fff;border:3px solid var(--primary);cursor:pointer}
-        /* ─── CONTROLES DE PRECISIÓN ─── */
+        /* ─── PRECISION CONTROLS ─── */
         .precision-control{display:flex;align-items:center;justify-content:center;gap:12px;margin:10px 0}
         .step-btn{background:rgba(255,255,255,.05);border:1px solid var(--glass-border);color:white;width:46px;height:46px;border-radius:14px;font-size:1.3rem;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center}
         .step-btn:active{background:var(--primary);color:#000;transform:scale(.88);box-shadow:var(--glow)}
@@ -51,7 +51,7 @@
         .preset-btn:active{background:rgba(0,240,255,.15);color:var(--primary);border-color:var(--primary);transform:scale(.95)}
         .preset-btn.active-preset{background:rgba(0,240,255,.1);color:var(--primary);border-color:rgba(0,240,255,.3)}
         .toggle-row{display:flex;justify-content:space-between;align-items:center;padding:12px;border-radius:15px;border:1px solid rgba(255,255,255,.1)}
-        .toggle-riego{background:rgba(0,240,255,.05);border-color:rgba(0,240,255,.2)}
+        .toggle-irrigation{background:rgba(0,240,255,.05);border-color:rgba(0,240,255,.2)}
         .toggle-danger{background:rgba(255,0,85,.05);border-color:rgba(255,0,85,.2)}
         .switch{position:relative;display:inline-block;width:50px;height:26px}
         .switch input{opacity:0;width:0;height:0}
@@ -76,43 +76,43 @@
     <div class="container">
         <div class="header">
             <h1>NET-CORE-CPS</h1>
-            <p>PANEL MULTI-MAESTRO v5.0</p>
+            <p>PANEL MULTI-COORD v5.0</p>
         </div>
 
         <div class="stats-bar">
-            <div class="stat-chip" id="statMasters">MAESTROS: 0</div>
-            <div class="stat-chip" id="statSlaves">ESCLAVOS: 0</div>
+            <div class="stat-chip" id="statMasters">COORDINATORS: 0</div>
+            <div class="stat-chip" id="statSlaves">NODES: 0</div>
         </div>
 
-        <!-- SECCIÓN 1: MODO DE SELECCIÓN -->
+        <!-- SECTION 1: SELECTION MODE -->
         <div class="control-card">
-            <div class="section-title">MODO DE SELECCIÓN</div>
+            <div class="section-title">SELECTION MODE</div>
             <div class="mode-selector" id="sel-btns">
                 <div id="glider-sel" class="glider"></div>
                 <button class="mode-btn active" onclick="setSelMode(0)">INDIVIDUAL</button>
-                <button class="mode-btn" onclick="setSelMode(1)">PERSONALIZADO</button>
+                <button class="mode-btn" onclick="setSelMode(1)">CUSTOM</button>
             </div>
 
-            <!-- Mapa de Red Dinámico -->
+            <!-- Dynamic Network Map -->
             <div id="networkMap"></div>
 
-            <!-- Resumen de Selección -->
+            <!-- Selection Summary -->
             <div class="selection-summary" id="selSummary">
-                <em>Selecciona un destino para el comando.</em>
+                <em>Select a target for the command.</em>
             </div>
         </div>
 
-        <!-- SECCIÓN 2: CONTROL OPERATIVO -->
+        <!-- SECTION 2: OPERATIONAL CONTROL -->
         <div class="control-card">
-            <div class="section-title">CONTROL OPERATIVO</div>
+            <div class="section-title">OPERATIONAL CONTROL</div>
             <div class="mode-selector" id="ctl-btns">
                 <div id="glider-ctl" class="glider"></div>
-                <button class="mode-btn active" onclick="setControlMode(0)">AUTOMÁTICO</button>
+                <button class="mode-btn active" onclick="setControlMode(0)">AUTOMATIC</button>
                 <button class="mode-btn" onclick="setControlMode(1)">MANUAL</button>
             </div>
             <div id="actuatorsSec" class="dynamic-section">
-                <label class="toggle-row toggle-riego">
-                    <span style="font-size:.85rem;font-weight:700;color:var(--primary);text-transform:uppercase">Riego (Relé)</span>
+                <label class="toggle-row toggle-irrigation">
+                    <span style="font-size:.85rem;font-weight:700;color:var(--primary);text-transform:uppercase">Irrigation (Relay)</span>
                     <div style="display:flex;align-items:center;gap:10px">
                         <span id="vVal" class="val" style="color:#fff;font-weight:700">OFF</span>
                         <div class="switch">
@@ -123,51 +123,51 @@
                 </label>
                 <div style="height:10px"></div>
                 <div>
-                    <div class="label-row"><span>Aire (Compuerta)</span></div>
-                    <!-- Control de Precisión -->
+                    <div class="label-row"><span>Air (Gate)</span></div>
+                    <!-- Precision Control -->
                     <div class="precision-control">
                         <button class="step-btn" onclick="stepVal(-1)">−</button>
                         <input type="number" id="cInput" class="num-input" value="0" min="0" max="90" step="1" oninput="syncFromInput()">
                         <span class="num-unit">°</span>
                         <button class="step-btn" onclick="stepVal(1)">+</button>
                     </div>
-                    <!-- Slider espejo (referencia visual) -->
+                    <!-- Mirror slider (visual reference) -->
                     <input type="range" id="cSlider" min="0" max="90" value="0" step="1" oninput="syncFromSlider()">
-                    <!-- Presets rápidos -->
+                    <!-- Quick presets -->
                     <div class="presets-row">
-                        <button class="preset-btn" id="pre0" onclick="setAngle(0)">Cerrado 0°</button>
-                        <button class="preset-btn" id="pre45" onclick="setAngle(45)">Mitad 45°</button>
-                        <button class="preset-btn" id="pre90" onclick="setAngle(90)">Abierto 90°</button>
+                        <button class="preset-btn" id="pre0" onclick="setAngle(0)">Closed 0°</button>
+                        <button class="preset-btn" id="pre45" onclick="setAngle(45)">Half 45°</button>
+                        <button class="preset-btn" id="pre90" onclick="setAngle(90)">Open 90°</button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- SECCIÓN 3: DEEPSLEEP -->
+        <!-- SECTION 3: DEEPSLEEP -->
         <div class="control-card">
-            <div class="section-title">GESTIÓN DE DEEPSLEEP</div>
+            <div class="section-title">DEEPSLEEP MANAGEMENT</div>
             <div class="mode-selector" id="ds-btns">
                 <div id="glider-ds" class="glider"></div>
                 <button class="mode-btn active" onclick="setSleepMode(0)">NORMAL</button>
-                <button class="mode-btn" onclick="setSleepMode(1)">PERSONALIZADO</button>
+                <button class="mode-btn" onclick="setSleepMode(1)">CUSTOM</button>
             </div>
             <div id="sleepSec" class="dynamic-section" style="flex-direction:column;gap:15px">
                 <div>
-                    <div class="label-row"><span>Duración del DeepSleep</span><span id="sVal" class="val">120 min</span></div>
+                    <div class="label-row"><span>DeepSleep Duration</span><span id="sVal" class="val">120 min</span></div>
                     <input type="range" id="sSlider" min="0" max="360" step="1" value="120" oninput="updateSleepVal()">
                 </div>
                 <label class="toggle-row toggle-danger">
-                    <span style="font-size:.85rem;font-weight:700;color:#ff4d82;text-transform:uppercase">Forzado Inmediato</span>
+                    <span style="font-size:.85rem;font-weight:700;color:#ff4d82;text-transform:uppercase">Immediate Force</span>
                     <div class="switch">
                         <input type="checkbox" id="forceCheck" onchange="toggleWarning()">
                         <span class="slider round"></span>
                     </div>
                 </label>
-                <div id="alertBox">⚠️ EJECUCIÓN CRÍTICA: APAGADO DE MOTORES ACTIVO</div>
+                <div id="alertBox">⚠️ CRITICAL EXECUTION: MOTORS SHUTDOWN ACTIVE</div>
             </div>
         </div>
 
-        <button class="btn-apply" id="btnApply" onclick="apply()" disabled>SELECCIONA UN DESTINO</button>
+        <button class="btn-apply" id="btnApply" onclick="apply()" disabled>SELECT A TARGET</button>
     </div>
 
     <script>
@@ -175,19 +175,19 @@
         tg.expand();
         tg.headerColor = '#050508';
 
-        // ─── ESTADO GLOBAL ───
-        let selMode = 0;       // 0: Individual, 1: Personalizado
+        // ─── GLOBAL STATE ───
+        let selMode = 0;       // 0: Individual, 1: Custom
         let modeControl = 0;   // 0: Auto, 1: Manual
         let modeSleep = 0;     // 0: Normal, 1: Custom
-        let topology = {};     // { maestro_id: [sid1, sid2, ...] }
-        let selection = {};    // { maestro_id: [sid1, sid2, ...] }
+        let topology = {};     // { coord_id: [sid1, sid2, ...] }
+        let selection = {};    // { coord_id: [sid1, sid2, ...] }
 
-        // ─── PARSEAR TOPOLOGÍA DESDE URL ───
+        // ─── PARSE TOPOLOGY FROM URL ───
         function parseTopology() {
             const params = new URLSearchParams(window.location.search);
             const raw = params.get('topo');
             if (!raw) return;
-            // Formato: "1:119,116;2:113,110"
+            // Format: "1:119,116;2:113,110"
             raw.split(';').forEach(part => {
                 const [mid, sidsStr] = part.split(':');
                 if (mid && sidsStr) {
@@ -196,18 +196,18 @@
             });
         }
 
-        // ─── RENDERIZAR MAPA DE RED ───
+        // ─── RENDER NETWORK MAP ───
         function renderNetwork() {
             const map = document.getElementById('networkMap');
             const masters = Object.keys(topology).map(Number).sort();
 
-            document.getElementById('statMasters').textContent = 'MAESTROS: ' + masters.length;
+            document.getElementById('statMasters').textContent = 'COORDINATORS: ' + masters.length;
             let totalSlaves = 0;
             masters.forEach(m => totalSlaves += topology[m].length);
-            document.getElementById('statSlaves').textContent = 'ESCLAVOS: ' + totalSlaves;
+            document.getElementById('statSlaves').textContent = 'NODES: ' + totalSlaves;
 
             if (masters.length === 0) {
-                map.innerHTML = '<div class="empty-state">Sin maestros detectados</div>';
+                map.innerHTML = '<div class="empty-state">No coordinators detected</div>';
                 return;
             }
 
@@ -216,10 +216,10 @@
                 const slaves = topology[mid];
                 html += '<div class="master-section fade-in">';
                 html += '<div class="master-header">';
-                html += '<span class="master-label">🏠 MAESTRO ' + mid + '</span>';
+                html += '<span class="master-label">🏠 COORD ' + mid + '</span>';
                 if (selMode === 1) {
                     const allSelected = slaves.every(s => (selection[mid] || []).includes(s));
-                    html += '<label class="master-check"><input type="checkbox" ' + (allSelected ? 'checked' : '') + ' onchange="toggleAllSlaves(' + mid + ',this.checked)"> TODOS</label>';
+                    html += '<label class="master-check"><input type="checkbox" ' + (allSelected ? 'checked' : '') + ' onchange="toggleAllSlaves(' + mid + ',this.checked)"> ALL</label>';
                 }
                 html += '</div>';
                 html += '<div class="slave-grid">';
@@ -233,7 +233,7 @@
             updateSummary();
         }
 
-        // ─── SELECCIÓN ───
+        // ─── SELECTION ───
         function toggleSlave(mid, sid) {
             if (selMode === 0) {
                 selection = {};
@@ -263,14 +263,14 @@
             const mids = Object.keys(selection).map(Number).sort();
 
             if (mids.length === 0) {
-                el.innerHTML = '<em>Selecciona un destino para el comando.</em>';
+                el.innerHTML = '<em>Select a target for the command.</em>';
                 btn.disabled = true;
-                btn.textContent = 'SELECCIONA UN DESTINO';
+                btn.textContent = 'SELECT A TARGET';
                 return;
             }
 
             btn.disabled = false;
-            btn.textContent = 'ENVIAR COMANDO';
+            btn.textContent = 'SEND COMMAND';
 
             let parts = [];
             let totalSel = 0;
@@ -279,10 +279,10 @@
                 totalSel += sids.length;
                 parts.push('<strong>M' + mid + '</strong> → E' + sids.join(', E'));
             });
-            el.innerHTML = '🎯 ' + parts.join(' | ') + ' (' + totalSel + ' nodo' + (totalSel > 1 ? 's' : '') + ')';
+            el.innerHTML = '🎯 ' + parts.join(' | ') + ' (' + totalSel + ' node' + (totalSel > 1 ? 's' : '') + ')';
         }
 
-        // ─── CONTROLES DE MODO ───
+        // ─── MODE CONTROLS ───
         function setSelMode(m) {
             selMode = m;
             selection = {};
@@ -316,7 +316,7 @@
             document.getElementById('alertBox').style.display = document.getElementById('forceCheck').checked ? 'block' : 'none';
         }
 
-        // ─── CONTROL DE PRECISIÓN (COMPUERTA) ───
+        // ─── PRECISION CONTROL (GATE) ───
         function clampAngle(v) {
             return Math.max(0, Math.min(90, parseInt(v) || 0));
         }
@@ -358,7 +358,7 @@
             document.getElementById('sVal').innerText = document.getElementById('sSlider').value + ' min';
         }
 
-        // ─── ENVIAR COMANDO ───
+        // ─── SEND COMMAND ───
         function apply() {
             let flags = 0;
             if (modeControl === 1) flags |= (1 << 0);
@@ -370,14 +370,14 @@
             const minutes = parseInt(document.getElementById('sSlider').value);
             const seconds = modeSleep === 1 ? (minutes * 60) : 0;
 
-            // Construir targets desde la selección
+            // Build targets from selection
             const targets = [];
             Object.keys(selection).forEach(mid => {
                 const sids = selection[parseInt(mid)];
                 if (sids && sids.length > 0) {
                     const allSelected = topology[parseInt(mid)] && sids.length === topology[parseInt(mid)].length;
                     targets.push({
-                        maestro_id: parseInt(mid),
+                        coord_id: parseInt(mid),
                         sids: allSelected ? ["*"] : sids
                     });
                 }
@@ -392,7 +392,7 @@
             };
 
             const btn = document.getElementById('btnApply');
-            btn.innerText = "SINCRO...";
+            btn.innerText = "SYNC...";
             btn.style.opacity = "0.6";
 
             setTimeout(() => {
@@ -401,7 +401,7 @@
             }, 600);
         }
 
-        // ─── INICIALIZACIÓN ───
+        // ─── INITIALIZATION ───
         parseTopology();
         renderNetwork();
         highlightPreset(0);
