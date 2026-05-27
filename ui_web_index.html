@@ -377,7 +377,7 @@
                 if (sids && sids.length > 0) {
                     const allSelected = topology[parseInt(mid)] && sids.length === topology[parseInt(mid)].length;
                     targets.push({
-                        coord_id: parseInt(mid),
+                        coordinator_id: parseInt(mid),
                         sids: allSelected ? ["*"] : sids
                     });
                 }
