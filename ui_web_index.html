@@ -297,6 +297,8 @@
         let modeSleep = 0;     // 0: Normal, 1: Custom
         let topology = {};     // { coord_id: [sid1, sid2, ...] }
         let selection = {};    // { coord_id: [sid1, sid2, ...] }
+        let telemetryHistory = {};  // { sid: [ {gas_t, gas_rh, co2, soil_t, soil_h, soil_ec, soil_ph, ds_temp, pwr_v, pwr_ma, pwr_mw, pos_gate_motor1, pos_gate_motor2, valve_relay_on, gate_motor_on}, ... ] }
+        let latestCoordIna = {};    // { coord_id: {v, ma, mw} }
 
         // ─── PARSE TOPOLOGY & CONFIG FROM URL ───
         function parseTopology() {
@@ -351,6 +353,26 @@
                     sSlider.max = Math.round(sysCfg.DEEPSLEEP_MAX_TIME / 60);
                     sSlider.value = Math.round(sysCfg.DEEPSLEEP_DEFAULT_TIME / 60);
                     updateSleepVal();
+                }
+            }
+
+            // Parse telemetry snapshot from gateway
+            const telRaw = params.get('tel');
+            if (telRaw) {
+                try {
+                    const telSnapshot = JSON.parse(telRaw);
+                    for (const [mid, data] of Object.entries(telSnapshot)) {
+                        if (data.coord_ina) {
+                            latestCoordIna[parseInt(mid)] = data.coord_ina;
+                        }
+                        if (data.nodes) {
+                            for (const [sid, nodeData] of Object.entries(data.nodes)) {
+                                telemetryHistory[parseInt(sid)] = [nodeData];
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error("Error parsing telemetry snapshot:", e);
                 }
             }
         }
@@ -577,7 +599,7 @@
         // ─── TELEMETRY CAROUSEL & ANALYTICS STATE ───
         const PARAMS = [
             {
-                key: "temp", title: "INDOOR AIR TEMP", unit: "°C", icon: "🌡️", color: "#00f0ff",
+                key: "gas_t", title: "INDOOR AIR TEMP", unit: "°C", icon: "🌡️", color: "#00f0ff",
                 get min() { return sysCfg.INDOOR_AIR_TEMP_MIN; },
                 get max() { return sysCfg.INDOOR_AIR_TEMP_MAX; },
                 get thresholds() {
@@ -589,7 +611,7 @@
                 }
             },
             {
-                key: "hum", title: "SOIL HUMIDITY", unit: "%", icon: "💧", color: "#00e676",
+                key: "soil_h", title: "SOIL HUMIDITY", unit: "%", icon: "💧", color: "#00e676",
                 get min() { return sysCfg.SOIL_HUM_MIN; },
                 get max() { return sysCfg.SOIL_HUM_MAX; },
                 get thresholds() {
@@ -614,7 +636,7 @@
                 }
             },
             {
-                key: "ina", title: "NODE INA219 POWER", unit: "V", icon: "⚡", color: "#7b2cbf",
+                key: "pwr_v", title: "NODE INA219 POWER", unit: "V", icon: "⚡", color: "#7b2cbf",
                 get min() { return sysCfg.INA_VOLT_MIN; },
                 get max() { return sysCfg.INA_VOLT_MAX; },
                 get thresholds() {
@@ -671,14 +693,21 @@
             renderChart();
         }
 
-        function updatePowerMetrics(nodePwr, coordPwr) {
-            document.getElementById('nodeVoltage').textContent = (nodePwr && nodePwr.v !== undefined) ? nodePwr.v.toFixed(2) + " V" : "--.- V";
-            document.getElementById('nodeCurrent').textContent = (nodePwr && nodePwr.ma !== undefined) ? nodePwr.ma.toFixed(0) + " mA" : "--.- mA";
-            document.getElementById('nodePower').textContent = (nodePwr && nodePwr.mw !== undefined) ? nodePwr.mw.toFixed(0) + " mW" : "--.- mW";
+        function updatePowerMetrics(nodeData, coordInaDict) {
+            // Node INA from selected node's telemetry snapshot
+            const nv = nodeData && nodeData.pwr_v;
+            const nma = nodeData && nodeData.pwr_ma;
+            const nmw = nodeData && nodeData.pwr_mw;
+            document.getElementById('nodeVoltage').textContent = (nv !== undefined && nv !== null) ? nv.toFixed(2) + " V" : "--.- V";
+            document.getElementById('nodeCurrent').textContent = (nma !== undefined && nma !== null) ? nma.toFixed(0) + " mA" : "--.- mA";
+            document.getElementById('nodePower').textContent = (nmw !== undefined && nmw !== null) ? nmw.toFixed(0) + " mW" : "--.- mW";
 
-            document.getElementById('coordVoltage').textContent = (coordPwr && coordPwr.v !== undefined) ? coordPwr.v.toFixed(2) + " V" : "--.- V";
-            document.getElementById('coordCurrent').textContent = (coordPwr && coordPwr.ma !== undefined) ? coordPwr.ma.toFixed(0) + " mA" : "--.- mA";
-            document.getElementById('coordPower').textContent = (coordPwr && coordPwr.mw !== undefined) ? coordPwr.mw.toFixed(0) + " mW" : "--.- mW";
+            // Coordinator INA from latestCoordIna (independent of node selection)
+            const coordIds = Object.keys(coordInaDict);
+            const cina = coordIds.length > 0 ? coordInaDict[coordIds[0]] : null;
+            document.getElementById('coordVoltage').textContent = (cina && cina.v !== undefined && cina.v !== null) ? cina.v.toFixed(2) + " V" : "--.- V";
+            document.getElementById('coordCurrent').textContent = (cina && cina.ma !== undefined && cina.ma !== null) ? cina.ma.toFixed(0) + " mA" : "--.- mA";
+            document.getElementById('coordPower').textContent = (cina && cina.mw !== undefined && cina.mw !== null) ? cina.mw.toFixed(0) + " mW" : "--.- mW";
         }
 
         function renderThresholdLines(p) {
@@ -723,6 +752,31 @@
 
             renderThresholdLines(p);
 
+            // For coord_ina_v slide, use latestCoordIna directly
+            if (p.key === 'coord_ina_v') {
+                const coordIds = Object.keys(latestCoordIna);
+                const cina = coordIds.length > 0 ? latestCoordIna[coordIds[0]] : null;
+                if (cina && cina.v !== undefined && cina.v !== null) {
+                    document.getElementById('paramValue').textContent = cina.v.toFixed(2) + ' ' + p.unit;
+                    const range = (p.max && p.min) ? (p.max - p.min) : 1;
+                    const norm = Math.max(0, Math.min(1, (cina.v - p.min) / range));
+                    const y = 160 - (norm * 100 + 30);
+                    chartPolyline.setAttribute('points', `0,${y.toFixed(1)} 400,${y.toFixed(1)}`);
+                    chartPolyline.removeAttribute('stroke-dasharray');
+                    chartPolyline.setAttribute('stroke', p.color);
+                    chartArea.setAttribute('points', `0,160 0,${y.toFixed(1)} 400,${y.toFixed(1)} 400,160`);
+                } else {
+                    document.getElementById('paramValue').textContent = 'NO DATA';
+                    chartPolyline.setAttribute('points', '0,80 400,80');
+                    chartPolyline.setAttribute('stroke-dasharray', '4,4');
+                    chartArea.setAttribute('points', '');
+                }
+                // Always update power metrics card regardless of slide
+                const nodeData = (activeNodeSid && telemetryHistory[activeNodeSid] && telemetryHistory[activeNodeSid].length > 0) ? telemetryHistory[activeNodeSid][telemetryHistory[activeNodeSid].length - 1] : null;
+                updatePowerMetrics(nodeData, latestCoordIna);
+                return;
+            }
+
             const history = (activeNodeSid && telemetryHistory[activeNodeSid]) ? telemetryHistory[activeNodeSid] : [];
 
             if (!history || history.length === 0) {
@@ -730,7 +784,7 @@
                 chartPolyline.setAttribute('points', '0,80 400,80');
                 chartPolyline.setAttribute('stroke-dasharray', '4,4');
                 chartArea.setAttribute('points', '');
-                updatePowerMetrics(null, null);
+                updatePowerMetrics(null, latestCoordIna);
                 return;
             }
 
@@ -741,7 +795,7 @@
             const latest = history[count - 1];
             const latestVal = latest[p.key];
 
-            document.getElementById('paramValue').textContent = (latestVal !== undefined && latestVal !== null) ? latestVal.toFixed(1) + ' ' + p.unit : 'NO DATA';
+            document.getElementById('paramValue').textContent = (latestVal !== undefined && latestVal !== null) ? (typeof latestVal === 'number' ? latestVal.toFixed(1) : latestVal) + ' ' + p.unit : 'NO DATA';
 
             const range = (p.max && p.min) ? (p.max - p.min) : 100;
             const minBound = p.min !== undefined ? p.min : 0;
@@ -766,8 +820,8 @@
                 chartArea.setAttribute('points', '');
             }
 
-            // Update Power Metrics display from latest real telemetry payload
-            updatePowerMetrics(latest.node_ina, latest.coord_ina);
+            // Update Power Metrics display from latest real telemetry snapshot
+            updatePowerMetrics(latest, latestCoordIna);
         }
 
         // ─── INITIALIZATION ───
