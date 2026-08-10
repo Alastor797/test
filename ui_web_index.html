@@ -9,8 +9,13 @@
     <style>
         :root{--primary:#00f0ff;--secondary:#7b2cbf;--danger:#ff2a5f;--success:#00e676;--bg:#020203;--card:rgba(15,15,20,0.65);--text:#e0e0e0;--glass-border:rgba(255,255,255,0.05);--glow:0 0 20px rgba(0,240,255,0.4)}
         *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;font-family:'Rajdhani',sans-serif;margin:0;padding:0}
-        body{background-color:var(--bg);background-image:radial-gradient(circle at 15% 20%,rgba(0,240,255,0.08) 0%,transparent 45%),radial-gradient(circle at 85% 80%,rgba(123,44,191,0.08) 0%,transparent 45%);color:var(--text);padding:15px;display:flex;flex-direction:column;align-items:center;min-height:100vh}
-        .container{width:100%;max-width:460px;display:flex;flex-direction:column;gap:15px}
+        body{background-color:var(--bg);background-image:radial-gradient(circle at 15% 20%,rgba(0,240,255,0.08) 0%,transparent 45%),radial-gradient(circle at 85% 80%,rgba(123,44,191,0.08) 0%,transparent 45%);color:var(--text);padding:20px;display:flex;flex-direction:column;align-items:center;min-height:100vh}
+        .container{width:100%;max-width:1050px;display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+        .header,.stats-bar,.full-width{grid-column:1 / -1}
+        @media (max-width:820px){
+            .container{max-width:480px;grid-template-columns:1fr}
+            .header,.stats-bar,.full-width{grid-column:1}
+        }
         .header{text-align:center;margin-bottom:5px}
         .header h1{font-family:'Orbitron',sans-serif;font-size:1.6rem;letter-spacing:4px;background:linear-gradient(135deg,#fff,var(--primary));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
         .header p{font-size:.8rem;letter-spacing:3px;color:rgba(255,255,255,.5);text-transform:uppercase;margin-top:5px}
@@ -23,15 +28,15 @@
         .mode-btn{background:none;border:none;color:rgba(255,255,255,.4);padding:12px 0;font-size:.78rem;font-weight:700;cursor:pointer;border-radius:14px;transition:all .3s;text-transform:uppercase;z-index:1}
         .mode-btn.active{color:#fff;text-shadow:0 0 10px var(--primary)}
         .glider{position:absolute;height:calc(100% - 8px);width:calc(50% - 4px);background:linear-gradient(45deg,var(--primary),var(--secondary));border-radius:14px;top:4px;left:4px;transition:transform .4s cubic-bezier(.2,.8,.2,1);box-shadow:0 4px 15px rgba(0,0,0,.5)}
-        .master-section{background:rgba(0,240,255,0.03);border:1px solid rgba(0,240,255,0.1);border-radius:16px;padding:14px;margin-top:5px}
-        .master-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-        .master-label{font-family:'Orbitron',sans-serif;font-size:.85rem;color:var(--primary);letter-spacing:2px}
-        .slave-grid{display:flex;flex-wrap:wrap;gap:8px}
-        .slave-chip{padding:8px 16px;border-radius:12px;font-size:.8rem;font-weight:700;cursor:pointer;transition:all .3s;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:rgba(255,255,255,.5);user-select:none}
-        .slave-chip.selected{background:linear-gradient(135deg,rgba(0,240,255,.2),rgba(123,44,191,.2));border-color:var(--primary);color:#fff;box-shadow:0 0 12px rgba(0,240,255,.2)}
-        .slave-chip:active{transform:scale(.95)}
-        .master-check{display:flex;align-items:center;gap:8px;cursor:pointer}
-        .master-check input{accent-color:var(--primary);width:16px;height:16px}
+        .coordinator-section{background:rgba(0,240,255,0.03);border:1px solid rgba(0,240,255,0.1);border-radius:16px;padding:14px;margin-top:5px}
+        .coordinator-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+        .coordinator-label{font-family:'Orbitron',sans-serif;font-size:.85rem;color:var(--primary);letter-spacing:2px}
+        .node-grid{display:flex;flex-wrap:wrap;gap:8px}
+        .node-chip{padding:8px 16px;border-radius:12px;font-size:.8rem;font-weight:700;cursor:pointer;transition:all .3s;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:rgba(255,255,255,.5);user-select:none}
+        .node-chip.selected{background:linear-gradient(135deg,rgba(0,240,255,.2),rgba(123,44,191,.2));border-color:var(--primary);color:#fff;box-shadow:0 0 12px rgba(0,240,255,.2)}
+        .node-chip:active{transform:scale(.95)}
+        .coordinator-check{display:flex;align-items:center;gap:8px;cursor:pointer}
+        .coordinator-check input{accent-color:var(--primary);width:16px;height:16px}
         .dynamic-section{transition:opacity .4s;opacity:0;display:none}
         .label-row{display:flex;justify-content:space-between;margin-bottom:8px;align-items:center}
         .label-row span{font-size:.85rem;color:rgba(255,255,255,.7)}
@@ -67,6 +72,26 @@
         .selection-summary{background:rgba(123,44,191,.08);border:1px solid rgba(123,44,191,.2);border-radius:12px;padding:10px;font-size:.78rem;color:rgba(255,255,255,.7);min-height:36px;line-height:1.5}
         .selection-summary strong{color:var(--primary)}
         .empty-state{text-align:center;padding:30px;color:rgba(255,255,255,.3);font-size:.85rem}
+        /* ─── TELEMETRY CAROUSEL & ANALYTICS ─── */
+        .carousel-nav{display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.4);border:1px solid var(--glass-border);border-radius:16px;padding:8px 12px}
+        .nav-arrow{background:rgba(255,255,255,0.05);border:1px solid var(--glass-border);color:var(--primary);width:36px;height:36px;border-radius:10px;font-size:1.4rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
+        .nav-arrow:active{background:var(--primary);color:#000;transform:scale(0.9)}
+        .carousel-title-group{display:flex;flex-direction:column;align-items:center;gap:2px}
+        .param-title{font-family:'Orbitron',sans-serif;font-size:0.75rem;letter-spacing:2px;color:rgba(255,255,255,0.7);text-transform:uppercase}
+        .param-value{font-family:'Orbitron',sans-serif;font-size:1.2rem;font-weight:700;color:var(--primary);text-shadow:0 0 10px rgba(0,240,255,0.4)}
+        .carousel-dots{display:flex;justify-content:center;gap:6px;margin:8px 0 4px 0}
+        .dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.15);cursor:pointer;transition:all .3s}
+        .dot.active{background:var(--primary);box-shadow:0 0 8px var(--primary);width:20px;border-radius:10px}
+        .chart-container{position:relative;width:100%;height:160px;background:rgba(0,0,0,0.3);border:1px solid var(--glass-border);border-radius:14px;overflow:hidden;margin:5px 0}
+        #telemetryChart{width:100%;height:100%}
+        .time-nav-bar{display:flex;align-items:center;gap:8px;justify-content:center;margin-top:6px}
+        .time-label{font-size:0.7rem;letter-spacing:1px;color:rgba(255,255,255,0.4);font-weight:700}
+        .time-btn{background:rgba(255,255,255,0.03);border:1px solid var(--glass-border);color:rgba(255,255,255,0.5);border-radius:8px;padding:4px 10px;font-size:0.7rem;font-weight:700;cursor:pointer;transition:all .2s}
+        .time-btn.active{background:rgba(0,240,255,0.15);border-color:var(--primary);color:var(--primary)}
+        .power-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:5px}
+        .power-box{background:rgba(0,240,255,0.03);border:1px solid rgba(0,240,255,0.1);border-radius:12px;padding:10px 6px;text-align:center;display:flex;flex-direction:column;gap:4px}
+        .p-label{font-size:0.65rem;letter-spacing:1px;color:rgba(255,255,255,0.5);font-weight:700;text-transform:uppercase}
+        .p-val{font-family:'Orbitron',sans-serif;font-size:0.95rem;font-weight:700;color:var(--primary)}
         @keyframes pulse{0%{opacity:.8}50%{opacity:.4}100%{opacity:.8}}
         @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
         .fade-in{animation:fadeIn .4s ease-out}
@@ -76,98 +101,186 @@
     <div class="container">
         <div class="header">
             <h1>NET-CORE-CPS</h1>
-            <p>PANEL MULTI-COORD v5.0</p>
+            <p>MULTI-COORDINATOR PANEL</p>
         </div>
 
         <div class="stats-bar">
-            <div class="stat-chip" id="statMasters">COORDINATORS: 0</div>
-            <div class="stat-chip" id="statSlaves">NODES: 0</div>
+            <div class="stat-chip" id="statCoordinators">COORDINATORS: 0</div>
+            <div class="stat-chip" id="statNodes">NODES: 0</div>
         </div>
 
-        <!-- SECTION 1: SELECTION MODE -->
-        <div class="control-card">
-            <div class="section-title">SELECTION MODE</div>
-            <div class="mode-selector" id="sel-btns">
-                <div id="glider-sel" class="glider"></div>
-                <button class="mode-btn active" onclick="setSelMode(0)">INDIVIDUAL</button>
-                <button class="mode-btn" onclick="setSelMode(1)">CUSTOM</button>
+        <!-- LEFT COLUMN: CONTROLS & COMMANDS -->
+        <div class="left-col" style="display:flex;flex-direction:column;gap:20px">
+            <!-- SECTION 1: SELECTION MODE -->
+            <div class="control-card">
+                <div class="section-title">SELECTION MODE</div>
+                <div class="mode-selector" id="sel-btns">
+                    <div id="glider-sel" class="glider"></div>
+                    <button class="mode-btn active" onclick="setSelMode(0)">INDIVIDUAL</button>
+                    <button class="mode-btn" onclick="setSelMode(1)">CUSTOM</button>
+                </div>
+
+                <!-- Dynamic Network Map -->
+                <div id="networkMap"></div>
+
+                <!-- Selection Summary -->
+                <div class="selection-summary" id="selSummary">
+                    <em>Select a target for the command.</em>
+                </div>
             </div>
 
-            <!-- Dynamic Network Map -->
-            <div id="networkMap"></div>
-
-            <!-- Selection Summary -->
-            <div class="selection-summary" id="selSummary">
-                <em>Select a target for the command.</em>
-            </div>
-        </div>
-
-        <!-- SECTION 2: OPERATIONAL CONTROL -->
-        <div class="control-card">
-            <div class="section-title">OPERATIONAL CONTROL</div>
-            <div class="mode-selector" id="ctl-btns">
-                <div id="glider-ctl" class="glider"></div>
-                <button class="mode-btn active" onclick="setControlMode(0)">AUTOMATIC</button>
-                <button class="mode-btn" onclick="setControlMode(1)">MANUAL</button>
-            </div>
-            <div id="actuatorsSec" class="dynamic-section">
-                <label class="toggle-row toggle-irrigation">
-                    <span style="font-size:.85rem;font-weight:700;color:var(--primary);text-transform:uppercase">Irrigation (Relay)</span>
-                    <div style="display:flex;align-items:center;gap:10px">
-                        <span id="vVal" class="val" style="color:#fff;font-weight:700">OFF</span>
-                        <div class="switch">
-                            <input type="checkbox" id="vToggle" class="primary-toggle" onchange="document.getElementById('vVal').innerText=this.checked?'ON':'OFF'">
-                            <span class="slider round"></span>
+            <!-- SECTION 2: OPERATIONAL CONTROL -->
+            <div class="control-card">
+                <div class="section-title">OPERATIONAL CONTROL</div>
+                <div class="mode-selector" id="ctl-btns">
+                    <div id="glider-ctl" class="glider"></div>
+                    <button class="mode-btn active" onclick="setControlMode(0)">AUTOMATIC</button>
+                    <button class="mode-btn" onclick="setControlMode(1)">MANUAL</button>
+                </div>
+                <div id="actuatorsSec" class="dynamic-section">
+                    <label class="toggle-row toggle-irrigation">
+                        <span style="font-size:.85rem;font-weight:700;color:var(--primary);text-transform:uppercase">Irrigation (Relay)</span>
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <span id="vVal" class="val" style="color:#fff;font-weight:700">OFF</span>
+                            <div class="switch">
+                                <input type="checkbox" id="vToggle" class="primary-toggle" onchange="updateRelayLabel()">
+                                <span class="slider round"></span>
+                            </div>
+                        </div>
+                    </label>
+                    <div style="height:10px"></div>
+                    <div>
+                        <div class="label-row"><span>Air (Gate)</span></div>
+                        <div class="precision-control">
+                            <button class="step-btn" onclick="stepVal(-1)">−</button>
+                            <input type="number" id="cInput" class="num-input" step="1" oninput="syncFromInput()">
+                            <span class="num-unit">°</span>
+                            <button class="step-btn" onclick="stepVal(1)">+</button>
+                        </div>
+                        <input type="range" id="cSlider" step="1" oninput="syncFromSlider()">
+                        <div class="presets-row">
+                            <button class="preset-btn" id="pre0">Open</button>
+                            <button class="preset-btn" id="pre45">Half</button>
+                            <button class="preset-btn" id="pre90">Closed</button>
                         </div>
                     </div>
-                </label>
-                <div style="height:10px"></div>
-                <div>
-                    <div class="label-row"><span>Air (Gate)</span></div>
-                    <!-- Precision Control -->
-                    <div class="precision-control">
-                        <button class="step-btn" onclick="stepVal(-1)">−</button>
-                        <input type="number" id="cInput" class="num-input" value="0" min="0" max="90" step="1" oninput="syncFromInput()">
-                        <span class="num-unit">°</span>
-                        <button class="step-btn" onclick="stepVal(1)">+</button>
+                </div>
+            </div>
+
+            <!-- SECTION 3: DEEPSLEEP -->
+            <div class="control-card">
+                <div class="section-title">DEEPSLEEP MANAGEMENT</div>
+                <div class="mode-selector" id="ds-btns">
+                    <div id="glider-ds" class="glider"></div>
+                    <button class="mode-btn active" onclick="setSleepMode(0)">NORMAL</button>
+                    <button class="mode-btn" onclick="setSleepMode(1)">CUSTOM</button>
+                </div>
+                <div id="sleepSec" class="dynamic-section" style="flex-direction:column;gap:15px">
+                    <div>
+                        <div class="label-row"><span>DeepSleep Duration</span><span id="sVal" class="val">-- min</span></div>
+                        <input type="range" id="sSlider" step="1" oninput="updateSleepVal()">
                     </div>
-                    <!-- Mirror slider (visual reference) -->
-                    <input type="range" id="cSlider" min="0" max="90" value="0" step="1" oninput="syncFromSlider()">
-                    <!-- Quick presets -->
-                    <div class="presets-row">
-                        <button class="preset-btn" id="pre0" onclick="setAngle(0)">Closed 0°</button>
-                        <button class="preset-btn" id="pre45" onclick="setAngle(45)">Half 45°</button>
-                        <button class="preset-btn" id="pre90" onclick="setAngle(90)">Open 90°</button>
+                    <label class="toggle-row toggle-danger">
+                        <span style="font-size:.85rem;font-weight:700;color:#ff4d82;text-transform:uppercase">Immediate Force</span>
+                        <div class="switch">
+                            <input type="checkbox" id="forceCheck" onchange="toggleWarning()">
+                            <span class="slider round"></span>
+                        </div>
+                    </label>
+                    <div id="alertBox">⚠️ CRITICAL EXECUTION: MOTORS SHUTDOWN ACTIVE</div>
+                </div>
+            </div>
+
+            <button class="btn-apply" id="btnApply" onclick="apply()" disabled>SELECT A TARGET</button>
+        </div>
+
+        <!-- RIGHT COLUMN: TELEMETRY & ANALYTICS -->
+        <div class="right-col" style="display:flex;flex-direction:column;gap:20px">
+            <!-- SECTION 4: TELEMETRY & ANALYTICS CAROUSEL -->
+            <div class="control-card">
+                <div class="section-title">TELEMETRY & ANALYTICS</div>
+                
+                <div class="carousel-nav">
+                    <button class="nav-arrow" onclick="prevSlide()">‹</button>
+                    <div class="carousel-title-group">
+                        <span id="paramIcon" style="font-size:1.1rem">🌡️</span>
+                        <span id="paramTitle" class="param-title">INDOOR AIR TEMP</span>
+                        <span id="paramValue" class="param-value">--.- °C</span>
+                    </div>
+                    <button class="nav-arrow" onclick="nextSlide()">›</button>
+                </div>
+
+                <div class="carousel-dots">
+                    <span class="dot active" onclick="goToSlide(0)"></span>
+                    <span class="dot" onclick="goToSlide(1)"></span>
+                    <span class="dot" onclick="goToSlide(2)"></span>
+                    <span class="dot" onclick="goToSlide(3)"></span>
+                    <span class="dot" onclick="goToSlide(4)"></span>
+                </div>
+
+                <div class="chart-container">
+                    <svg id="telemetryChart" viewBox="0 0 400 160" preserveAspectRatio="none">
+                        <g id="thresholdsGroup"></g>
+
+                        <polyline id="chartPolyline" fill="none" stroke="#00f0ff" stroke-width="2.5" points="0,80 400,80"/>
+                        <polygon id="chartArea" fill="url(#chartGradient)" opacity="0.2" points="0,160 0,80 400,80 400,160"/>
+                        
+                        <defs>
+                            <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#00f0ff"/>
+                                <stop offset="100%" stop-color="#00f0ff" stop-opacity="0"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+
+                <div class="time-nav-bar">
+                    <span class="time-label">WINDOW:</span>
+                    <button class="time-btn" onclick="setTimeWindow(5)">5m</button>
+                    <button class="time-btn active" onclick="setTimeWindow(15)">15m</button>
+                    <button class="time-btn" onclick="setTimeWindow(60)">1h</button>
+                </div>
+            </div>
+
+            <!-- SECTION 5: SYSTEM POWER METRICS (INA219) -->
+            <div class="control-card">
+                <div class="section-title">SYSTEM POWER METRICS (INA219)</div>
+                
+                <!-- Node INA219 Metrics -->
+                <div style="font-size:.78rem;font-weight:700;color:var(--primary);margin-bottom:6px;letter-spacing:1px">🌱 NODE POWER (INA219)</div>
+                <div class="power-grid" style="margin-bottom:14px">
+                    <div class="power-box">
+                        <span class="p-label">VOLTAGE</span>
+                        <span id="nodeVoltage" class="p-val">--.- V</span>
+                    </div>
+                    <div class="power-box">
+                        <span class="p-label">CURRENT</span>
+                        <span id="nodeCurrent" class="p-val">--.- mA</span>
+                    </div>
+                    <div class="power-box">
+                        <span class="p-label">POWER</span>
+                        <span id="nodePower" class="p-val">--.- mW</span>
+                    </div>
+                </div>
+
+                <!-- Coordinator INA219 Metrics -->
+                <div style="font-size:.78rem;font-weight:700;color:var(--secondary);margin-bottom:6px;letter-spacing:1px">🏠 COORDINATOR POWER (INA219)</div>
+                <div class="power-grid">
+                    <div class="power-box">
+                        <span class="p-label">VOLTAGE</span>
+                        <span id="coordVoltage" class="p-val">--.- V</span>
+                    </div>
+                    <div class="power-box">
+                        <span class="p-label">CURRENT</span>
+                        <span id="coordCurrent" class="p-val">--.- mA</span>
+                    </div>
+                    <div class="power-box">
+                        <span class="p-label">POWER</span>
+                        <span id="coordPower" class="p-val">--.- mW</span>
                     </div>
                 </div>
             </div>
         </div>
-
-        <!-- SECTION 3: DEEPSLEEP -->
-        <div class="control-card">
-            <div class="section-title">DEEPSLEEP MANAGEMENT</div>
-            <div class="mode-selector" id="ds-btns">
-                <div id="glider-ds" class="glider"></div>
-                <button class="mode-btn active" onclick="setSleepMode(0)">NORMAL</button>
-                <button class="mode-btn" onclick="setSleepMode(1)">CUSTOM</button>
-            </div>
-            <div id="sleepSec" class="dynamic-section" style="flex-direction:column;gap:15px">
-                <div>
-                    <div class="label-row"><span>DeepSleep Duration</span><span id="sVal" class="val">120 min</span></div>
-                    <input type="range" id="sSlider" min="0" max="360" step="1" value="120" oninput="updateSleepVal()">
-                </div>
-                <label class="toggle-row toggle-danger">
-                    <span style="font-size:.85rem;font-weight:700;color:#ff4d82;text-transform:uppercase">Immediate Force</span>
-                    <div class="switch">
-                        <input type="checkbox" id="forceCheck" onchange="toggleWarning()">
-                        <span class="slider round"></span>
-                    </div>
-                </label>
-                <div id="alertBox">⚠️ CRITICAL EXECUTION: MOTORS SHUTDOWN ACTIVE</div>
-            </div>
-        </div>
-
-        <button class="btn-apply" id="btnApply" onclick="apply()" disabled>SELECT A TARGET</button>
     </div>
 
     <script>
@@ -176,56 +289,102 @@
         tg.headerColor = '#050508';
 
         // ─── GLOBAL STATE ───
+        let sysCfg = {};
+        let MOTOR_ANGLE_OPEN = null;
+        let MOTOR_ANGLE_CLOSED = null;
         let selMode = 0;       // 0: Individual, 1: Custom
         let modeControl = 0;   // 0: Auto, 1: Manual
         let modeSleep = 0;     // 0: Normal, 1: Custom
         let topology = {};     // { coord_id: [sid1, sid2, ...] }
         let selection = {};    // { coord_id: [sid1, sid2, ...] }
 
-        // ─── PARSE TOPOLOGY FROM URL ───
+        // ─── PARSE TOPOLOGY & CONFIG FROM URL ───
         function parseTopology() {
             const params = new URLSearchParams(window.location.search);
             const raw = params.get('topo');
-            if (!raw) return;
-            // Format: "1:119,116;2:113,110"
-            raw.split(';').forEach(part => {
-                const [mid, sidsStr] = part.split(':');
-                if (mid && sidsStr) {
-                    topology[parseInt(mid)] = sidsStr.split(',').map(Number);
+            if (raw) {
+                raw.split(';').forEach(part => {
+                    const [mid, sidsStr] = part.split(':');
+                    if (mid && sidsStr) {
+                        topology[parseInt(mid)] = sidsStr.split(',').map(Number);
+                    }
+                });
+            }
+
+            const cfgRaw = params.get('cfg');
+            if (cfgRaw) {
+                try {
+                    sysCfg = JSON.parse(cfgRaw);
+                    if (sysCfg.MOTOR_ANGLE_OPEN !== undefined) MOTOR_ANGLE_OPEN = sysCfg.MOTOR_ANGLE_OPEN;
+                    if (sysCfg.MOTOR_ANGLE_CLOSED !== undefined) MOTOR_ANGLE_CLOSED = sysCfg.MOTOR_ANGLE_CLOSED;
+                } catch (e) {
+                    console.error("Error parsing sysCfg JSON:", e);
                 }
-            });
+            }
+
+            if (MOTOR_ANGLE_OPEN !== null && MOTOR_ANGLE_CLOSED !== null) {
+                const minAng = Math.min(MOTOR_ANGLE_OPEN, MOTOR_ANGLE_CLOSED);
+                const maxAng = Math.max(MOTOR_ANGLE_OPEN, MOTOR_ANGLE_CLOSED);
+                const cInput = document.getElementById('cInput');
+                const cSlider = document.getElementById('cSlider');
+                if (cInput && cSlider) {
+                    cInput.min = minAng; cInput.max = maxAng; cInput.value = minAng;
+                    cSlider.min = minAng; cSlider.max = maxAng; cSlider.value = minAng;
+                }
+                const pre0 = document.getElementById('pre0');
+                const pre45 = document.getElementById('pre45');
+                const pre90 = document.getElementById('pre90');
+                if (pre0 && pre90) {
+                    pre0.textContent = `Open ${MOTOR_ANGLE_OPEN}°`;
+                    pre0.onclick = function() { setAngle(MOTOR_ANGLE_OPEN); };
+                    pre90.textContent = `Closed ${MOTOR_ANGLE_CLOSED}°`;
+                    pre90.onclick = function() { setAngle(MOTOR_ANGLE_CLOSED); };
+                    if (pre45) {
+                        const midAng = Math.round((MOTOR_ANGLE_OPEN + MOTOR_ANGLE_CLOSED) / 2);
+                        pre45.textContent = `Half ${midAng}°`;
+                        pre45.onclick = function() { setAngle(midAng); };
+                    }
+                }
+                const sSlider = document.getElementById('sSlider');
+                if (sSlider && sysCfg.DEEPSLEEP_MIN_TIME !== undefined) {
+                    sSlider.min = Math.round(sysCfg.DEEPSLEEP_MIN_TIME / 60);
+                    sSlider.max = Math.round(sysCfg.DEEPSLEEP_MAX_TIME / 60);
+                    sSlider.value = Math.round(sysCfg.DEEPSLEEP_DEFAULT_TIME / 60);
+                    updateSleepVal();
+                }
+            }
         }
 
         // ─── RENDER NETWORK MAP ───
         function renderNetwork() {
             const map = document.getElementById('networkMap');
-            const masters = Object.keys(topology).map(Number).sort();
+            const coordinators = Object.keys(topology).map(Number).sort();
 
-            document.getElementById('statMasters').textContent = 'COORDINATORS: ' + masters.length;
-            let totalSlaves = 0;
-            masters.forEach(m => totalSlaves += topology[m].length);
-            document.getElementById('statSlaves').textContent = 'NODES: ' + totalSlaves;
+            document.getElementById('statCoordinators').textContent = 'COORDINATORS: ' + coordinators.length;
+            let totalNodes = 0;
+            coordinators.forEach(m => totalNodes += topology[m].length);
+            document.getElementById('statNodes').textContent = 'NODES: ' + totalNodes;
 
-            if (masters.length === 0) {
+            if (coordinators.length === 0) {
                 map.innerHTML = '<div class="empty-state">No coordinators detected</div>';
                 return;
             }
 
             let html = '';
-            masters.forEach(mid => {
-                const slaves = topology[mid];
-                html += '<div class="master-section fade-in">';
-                html += '<div class="master-header">';
-                html += '<span class="master-label">🏠 COORD ' + mid + '</span>';
+            coordinators.forEach(mid => {
+                const nodes = topology[mid];
+                html += '<div class="coordinator-section fade-in">';
+                html += '<div class="coordinator-header">';
+                html += '<span class="coordinator-label">🏠 COORD ' + mid + '</span>';
                 if (selMode === 1) {
-                    const allSelected = slaves.every(s => (selection[mid] || []).includes(s));
-                    html += '<label class="master-check"><input type="checkbox" ' + (allSelected ? 'checked' : '') + ' onchange="toggleAllSlaves(' + mid + ',this.checked)"> ALL</label>';
+                    const allSelected = nodes.every(s => (selection[mid] || []).includes(s));
+                    html += '<label class="coordinator-check"><input type="checkbox" ' + (allSelected ? 'checked' : '') + ' onchange="toggleAllNodes(' + mid + ',this.checked)"> ALL</label>';
                 }
                 html += '</div>';
-                html += '<div class="slave-grid">';
-                slaves.forEach(sid => {
+                html += '<div class="node-grid">';
+                nodes.forEach(sid => {
                     const isSel = (selection[mid] || []).includes(sid);
-                    html += '<div class="slave-chip ' + (isSel ? 'selected' : '') + '" onclick="toggleSlave(' + mid + ',' + sid + ')">E' + sid + '</div>';
+                    html += '<div class="node-chip ' + (isSel ? 'selected' : '') + '" onclick="toggleNode(' + mid + ',' + sid + ')">E' + sid + '</div>';
                 });
                 html += '</div></div>';
             });
@@ -234,7 +393,7 @@
         }
 
         // ─── SELECTION ───
-        function toggleSlave(mid, sid) {
+        function toggleNode(mid, sid) {
             if (selMode === 0) {
                 selection = {};
                 selection[mid] = [sid];
@@ -251,7 +410,7 @@
             renderNetwork();
         }
 
-        function toggleAllSlaves(mid, checked) {
+        function toggleAllNodes(mid, checked) {
             if (checked) { selection[mid] = [...topology[mid]]; }
             else { delete selection[mid]; }
             renderNetwork();
@@ -316,9 +475,19 @@
             document.getElementById('alertBox').style.display = document.getElementById('forceCheck').checked ? 'block' : 'none';
         }
 
+        function updateRelayLabel() {
+            const isChecked = document.getElementById('vToggle').checked;
+            const rOn = sysCfg.RELAY_STATE_ON !== undefined ? sysCfg.RELAY_STATE_ON : 1;
+            const rOff = sysCfg.RELAY_STATE_OFF !== undefined ? sysCfg.RELAY_STATE_OFF : 0;
+            const stateVal = isChecked ? rOn : rOff;
+            document.getElementById('vVal').innerText = (stateVal === (sysCfg.RELAY_STATE_ON !== undefined ? sysCfg.RELAY_STATE_ON : 1)) ? 'ON' : 'OFF';
+        }
+
         // ─── PRECISION CONTROL (GATE) ───
         function clampAngle(v) {
-            return Math.max(0, Math.min(90, parseInt(v) || 0));
+            const minAng = Math.min(MOTOR_ANGLE_OPEN, MOTOR_ANGLE_CLOSED);
+            const maxAng = Math.max(MOTOR_ANGLE_OPEN, MOTOR_ANGLE_CLOSED);
+            return Math.max(minAng, Math.min(maxAng, parseInt(v) || minAng));
         }
 
         function setAngle(val) {
@@ -348,9 +517,10 @@
         }
 
         function highlightPreset(val) {
-            document.getElementById('pre0').classList.toggle('active-preset', val === 0);
-            document.getElementById('pre45').classList.toggle('active-preset', val === 45);
-            document.getElementById('pre90').classList.toggle('active-preset', val === 90);
+            const midAng = Math.round((MOTOR_ANGLE_OPEN + MOTOR_ANGLE_CLOSED) / 2);
+            document.getElementById('pre0').classList.toggle('active-preset', val === MOTOR_ANGLE_OPEN);
+            document.getElementById('pre45').classList.toggle('active-preset', val === midAng);
+            document.getElementById('pre90').classList.toggle('active-preset', val === MOTOR_ANGLE_CLOSED);
         }
 
         // ─── DEEPSLEEP SLIDER ───
@@ -383,10 +553,13 @@
                 }
             });
 
+            const rOn = sysCfg.RELAY_STATE_ON !== undefined ? sysCfg.RELAY_STATE_ON : 1;
+            const rOff = sysCfg.RELAY_STATE_OFF !== undefined ? sysCfg.RELAY_STATE_OFF : 0;
+
             const data = {
                 flags: flags,
-                v: document.getElementById('vToggle').checked ? 0 : 90,
-                c: parseInt(document.getElementById('cInput').value),
+                v: document.getElementById('vToggle').checked ? rOn : rOff,
+                c: clampAngle(document.getElementById('cInput').value),
                 s: seconds,
                 targets: targets
             };
@@ -401,10 +574,207 @@
             }, 600);
         }
 
+        // ─── TELEMETRY CAROUSEL & ANALYTICS STATE ───
+        const PARAMS = [
+            {
+                key: "temp", title: "INDOOR AIR TEMP", unit: "°C", icon: "🌡️", color: "#00f0ff",
+                get min() { return sysCfg.INDOOR_AIR_TEMP_MIN; },
+                get max() { return sysCfg.INDOOR_AIR_TEMP_MAX; },
+                get thresholds() {
+                    return [
+                        { val: sysCfg.INDOOR_AIR_TEMP_MAX, label: "MAX: " + sysCfg.INDOOR_AIR_TEMP_MAX + "°C", color: "rgba(255,42,95,0.85)" },
+                        { val: sysCfg.INDOOR_AIR_TEMP_LOWER, label: "OPTIMAL: " + sysCfg.INDOOR_AIR_TEMP_LOWER + "°C", color: "rgba(255,183,3,0.85)" },
+                        { val: sysCfg.INDOOR_AIR_TEMP_MIN, label: "MIN (VETO): " + sysCfg.INDOOR_AIR_TEMP_MIN + "°C", color: "rgba(0,240,255,0.85)" }
+                    ];
+                }
+            },
+            {
+                key: "hum", title: "SOIL HUMIDITY", unit: "%", icon: "💧", color: "#00e676",
+                get min() { return sysCfg.SOIL_HUM_MIN; },
+                get max() { return sysCfg.SOIL_HUM_MAX; },
+                get thresholds() {
+                    return [
+                        { val: sysCfg.SOIL_HUM_MAX, label: "FIELD CAP: " + sysCfg.SOIL_HUM_MAX + "%", color: "rgba(0,240,255,0.85)" },
+                        { val: sysCfg.SOIL_HUM_MIN, label: "IRRIG START: " + sysCfg.SOIL_HUM_MIN + "%", color: "rgba(255,183,3,0.85)" }
+                    ];
+                }
+            },
+            {
+                key: "co2", title: "CO2 CONCENTRATION", unit: "ppm", icon: "🌫️", color: "#ffb703",
+                get min() { return sysCfg.CO2_MIN; },
+                get max() { return sysCfg.CO2_MAX; },
+                get thresholds() {
+                    return [
+                        { val: sysCfg.CO2_MAX, label: "MAX: " + sysCfg.CO2_MAX + " ppm", color: "rgba(255,42,95,0.85)" },
+                        { val: sysCfg.CO2_UPPER, label: "UPPER: " + sysCfg.CO2_UPPER + " ppm", color: "rgba(255,140,0,0.85)" },
+                        { val: sysCfg.CO2_NORMAL, label: "TARGET: " + sysCfg.CO2_NORMAL + " ppm", color: "rgba(0,230,118,0.85)" },
+                        { val: sysCfg.CO2_LOWER, label: "LOWER: " + sysCfg.CO2_LOWER + " ppm", color: "rgba(255,183,3,0.85)" },
+                        { val: sysCfg.CO2_MIN, label: "MIN: " + sysCfg.CO2_MIN + " ppm", color: "rgba(0,240,255,0.85)" }
+                    ];
+                }
+            },
+            {
+                key: "ina", title: "NODE INA219 POWER", unit: "V", icon: "⚡", color: "#7b2cbf",
+                get min() { return sysCfg.INA_VOLT_MIN; },
+                get max() { return sysCfg.INA_VOLT_MAX; },
+                get thresholds() {
+                    return [
+                        { val: sysCfg.INA_VOLT_MAX, label: "FULL: " + sysCfg.INA_VOLT_MAX + "V", color: "rgba(0,230,118,0.85)" },
+                        { val: sysCfg.INA_VOLT_MIN, label: "CUTOFF: " + sysCfg.INA_VOLT_MIN + "V", color: "rgba(255,42,95,0.85)" }
+                    ];
+                }
+            },
+            {
+                key: "coord_ina_v", title: "COORD INA219 POWER", unit: "V", icon: "🔋", color: "#e0aaff",
+                get min() { return sysCfg.INA_VOLT_MIN; },
+                get max() { return sysCfg.INA_VOLT_MAX; },
+                get thresholds() {
+                    return [
+                        { val: sysCfg.INA_VOLT_MAX, label: "FULL: " + sysCfg.INA_VOLT_MAX + "V", color: "rgba(0,230,118,0.85)" },
+                        { val: sysCfg.INA_VOLT_MIN, label: "CUTOFF: " + sysCfg.INA_VOLT_MIN + "V", color: "rgba(255,42,95,0.85)" }
+                    ];
+                }
+            }
+        ];
+
+        let currentSlide = 0;
+        let timeWindowMinutes = 15;
+        let activeNodeSid = null;
+
+        function goToSlide(index) {
+            currentSlide = (index + PARAMS.length) % PARAMS.length;
+            renderCarousel();
+        }
+
+        function nextSlide() { goToSlide(currentSlide + 1); }
+        function prevSlide() { goToSlide(currentSlide - 1); }
+
+        function setTimeWindow(mins) {
+            timeWindowMinutes = mins;
+            document.querySelectorAll('.time-btn').forEach(b => {
+                const label = b.textContent;
+                const isMatch = (mins === 5 && label === '5m') || (mins === 15 && label === '15m') || (mins === 60 && label === '1h');
+                b.classList.toggle('active', isMatch);
+            });
+            renderChart();
+        }
+
+        function renderCarousel() {
+            const p = PARAMS[currentSlide];
+            document.getElementById('paramIcon').textContent = p.icon;
+            document.getElementById('paramTitle').textContent = p.title;
+
+            document.querySelectorAll('.carousel-dots .dot').forEach((d, i) => {
+                d.classList.toggle('active', i === currentSlide);
+            });
+
+            renderChart();
+        }
+
+        function updatePowerMetrics(nodePwr, coordPwr) {
+            document.getElementById('nodeVoltage').textContent = (nodePwr && nodePwr.v !== undefined) ? nodePwr.v.toFixed(2) + " V" : "--.- V";
+            document.getElementById('nodeCurrent').textContent = (nodePwr && nodePwr.ma !== undefined) ? nodePwr.ma.toFixed(0) + " mA" : "--.- mA";
+            document.getElementById('nodePower').textContent = (nodePwr && nodePwr.mw !== undefined) ? nodePwr.mw.toFixed(0) + " mW" : "--.- mW";
+
+            document.getElementById('coordVoltage').textContent = (coordPwr && coordPwr.v !== undefined) ? coordPwr.v.toFixed(2) + " V" : "--.- V";
+            document.getElementById('coordCurrent').textContent = (coordPwr && coordPwr.ma !== undefined) ? coordPwr.ma.toFixed(0) + " mA" : "--.- mA";
+            document.getElementById('coordPower').textContent = (coordPwr && coordPwr.mw !== undefined) ? coordPwr.mw.toFixed(0) + " mW" : "--.- mW";
+        }
+
+        function renderThresholdLines(p) {
+            const grp = document.getElementById('thresholdsGroup');
+            if (!grp) return;
+            grp.innerHTML = '';
+            if (!p.thresholds || p.min === undefined || p.max === undefined) return;
+            const range = p.max - p.min;
+            if (range <= 0) return;
+
+            p.thresholds.forEach(t => {
+                if (t.val === undefined || t.val === null) return;
+                const norm = Math.max(0, Math.min(1, (t.val - p.min) / range));
+                const y = 160 - (norm * 100 + 30);
+
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("x1", "0");
+                line.setAttribute("y1", y.toFixed(1));
+                line.setAttribute("x2", "400");
+                line.setAttribute("y2", y.toFixed(1));
+                line.setAttribute("stroke", t.color);
+                line.setAttribute("stroke-dasharray", "4");
+                line.setAttribute("stroke-width", "1.2");
+                grp.appendChild(line);
+
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", "395");
+                text.setAttribute("y", (y - 4).toFixed(1));
+                text.setAttribute("fill", t.color);
+                text.setAttribute("font-size", "9");
+                text.setAttribute("font-weight", "bold");
+                text.setAttribute("text-anchor", "end");
+                text.textContent = t.label;
+                grp.appendChild(text);
+            });
+        }
+
+        function renderChart() {
+            const p = PARAMS[currentSlide];
+            const chartPolyline = document.getElementById('chartPolyline');
+            const chartArea = document.getElementById('chartArea');
+
+            renderThresholdLines(p);
+
+            const history = (activeNodeSid && telemetryHistory[activeNodeSid]) ? telemetryHistory[activeNodeSid] : [];
+
+            if (!history || history.length === 0) {
+                document.getElementById('paramValue').textContent = 'SLEEPING / INACTIVE';
+                chartPolyline.setAttribute('points', '0,80 400,80');
+                chartPolyline.setAttribute('stroke-dasharray', '4,4');
+                chartArea.setAttribute('points', '');
+                updatePowerMetrics(null, null);
+                return;
+            }
+
+            // Real data renderer: map actual history entries to SVG 400x160 canvas
+            chartPolyline.removeAttribute('stroke-dasharray');
+            let pointsArr = [];
+            const count = history.length;
+            const latest = history[count - 1];
+            const latestVal = latest[p.key];
+
+            document.getElementById('paramValue').textContent = (latestVal !== undefined && latestVal !== null) ? latestVal.toFixed(1) + ' ' + p.unit : 'NO DATA';
+
+            const range = (p.max && p.min) ? (p.max - p.min) : 100;
+            const minBound = p.min !== undefined ? p.min : 0;
+
+            for (let i = 0; i < count; i++) {
+                const x = (count === 1) ? 200 : (i / (count - 1)) * 400;
+                const val = history[i][p.key];
+                if (val !== undefined && val !== null) {
+                    const norm = Math.max(0, Math.min(1, (val - minBound) / range));
+                    const y = 160 - (norm * 100 + 30);
+                    pointsArr.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+                }
+            }
+
+            if (pointsArr.length > 0) {
+                const polyStr = pointsArr.join(' ');
+                chartPolyline.setAttribute('points', polyStr);
+                chartPolyline.setAttribute('stroke', p.color);
+                chartArea.setAttribute('points', `0,160 ${polyStr} 400,160`);
+            } else {
+                chartPolyline.setAttribute('points', '');
+                chartArea.setAttribute('points', '');
+            }
+
+            // Update Power Metrics display from latest real telemetry payload
+            updatePowerMetrics(latest.node_ina, latest.coord_ina);
+        }
+
         // ─── INITIALIZATION ───
         parseTopology();
         renderNetwork();
         highlightPreset(0);
+        renderCarousel();
     </script>
 </body>
 </html>
