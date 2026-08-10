@@ -299,6 +299,7 @@
         let selection = {};    // { coord_id: [sid1, sid2, ...] }
         let telemetryHistory = {};  // { sid: [ {gas_t, gas_rh, co2, soil_t, soil_h, soil_ec, soil_ph, ds_temp, pwr_v, pwr_ma, pwr_mw, pos_gate_motor1, pos_gate_motor2, valve_relay_on, gate_motor_on}, ... ] }
         let latestCoordIna = {};    // { coord_id: {v, ma, mw} }
+        let telemetryApiUrl = null;
 
         // ─── PARSE TOPOLOGY & CONFIG FROM URL ───
         function parseTopology() {
@@ -374,6 +375,12 @@
                 } catch (e) {
                     console.error("Error parsing telemetry snapshot:", e);
                 }
+            }
+
+            // Parse live HTTP API URL for 2-second polling
+            const apiRaw = params.get('api');
+            if (apiRaw) {
+                telemetryApiUrl = apiRaw;
             }
         }
 
@@ -829,6 +836,38 @@
         renderNetwork();
         highlightPreset(0);
         renderCarousel();
+
+        // ─── LIVE 2-SECOND POLLING LOOP (Phase 2) ───
+        if (telemetryApiUrl) {
+            setInterval(async () => {
+                try {
+                    const resp = await fetch(telemetryApiUrl);
+                    if (resp.ok) {
+                        const telData = await resp.json();
+                        for (const [mid, data] of Object.entries(telData)) {
+                            if (data.coord_ina) {
+                                latestCoordIna[parseInt(mid)] = data.coord_ina;
+                            }
+                            if (data.nodes) {
+                                for (const [sid, nodeData] of Object.entries(data.nodes)) {
+                                    const sidNum = parseInt(sid);
+                                    if (!telemetryHistory[sidNum]) {
+                                        telemetryHistory[sidNum] = [];
+                                    }
+                                    telemetryHistory[sidNum].push(nodeData);
+                                    if (telemetryHistory[sidNum].length > 30) {
+                                        telemetryHistory[sidNum].shift();
+                                    }
+                                }
+                            }
+                        }
+                        renderChart();
+                    }
+                } catch (e) {
+                    // Silently handle transient connection drop
+                }
+            }, 2000);
+        }
     </script>
 </body>
 </html>
