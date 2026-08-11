@@ -280,6 +280,16 @@
                     </div>
                 </div>
             </div>
+
+            <!-- SECTION 6: LIVE COMMAND HISTORY & STATUS LOG -->
+            <div class="control-card">
+                <div class="section-title">LIVE COMMAND HISTORY & STATUS</div>
+                <div id="commandHistoryLog" style="display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto;padding-right:4px">
+                    <div style="text-align:center;padding:15px;color:rgba(255,255,255,0.3);font-size:0.8rem">
+                        <em>No commands transmitted yet.</em>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -831,6 +841,49 @@
             updatePowerMetrics(latest, latestCoordIna);
         }
 
+        // ─── RENDER LIVE COMMAND HISTORY ───
+        function renderCommandHistory(history) {
+            const container = document.getElementById('commandHistoryLog');
+            if (!container) return;
+
+            if (!history || history.length === 0) {
+                container.innerHTML = `<div style="text-align:center;padding:15px;color:rgba(255,255,255,0.3);font-size:0.8rem"><em>No commands transmitted yet.</em></div>`;
+                return;
+            }
+
+            let html = '';
+            history.forEach(item => {
+                let badgeClass = 'rgba(255,183,3,0.15)';
+                let borderColor = 'rgba(255,183,3,0.4)';
+                let textColor = '#ffb703';
+                let icon = '⏳';
+
+                if (item.status === 'SUCCESS') {
+                    badgeClass = 'rgba(0,230,118,0.15)';
+                    borderColor = 'rgba(0,230,118,0.4)';
+                    textColor = '#00e676';
+                    icon = '✅';
+                } else if (item.status === 'FAILED') {
+                    badgeClass = 'rgba(255,42,95,0.15)';
+                    borderColor = 'rgba(255,42,95,0.4)';
+                    textColor = '#ff2a5f';
+                    icon = '🔴';
+                }
+
+                html += `
+                <div style="background:rgba(255,255,255,0.02);border:1px solid ${borderColor};border-radius:12px;padding:8px 12px;display:flex;flex-direction:column;gap:4px">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <span style="font-family:'Orbitron';font-size:0.75rem;font-weight:700;color:var(--primary)">${item.id} <span style="font-size:0.65rem;color:rgba(255,255,255,0.4)">(${item.timestamp})</span></span>
+                        <span style="background:${badgeClass};border:1px solid ${borderColor};color:${textColor};padding:2px 8px;border-radius:10px;font-size:0.68rem;font-weight:700;letter-spacing:0.5px">${icon} ${item.status_label}</span>
+                    </div>
+                    <div style="font-size:0.72rem;color:rgba(255,255,255,0.7)">🎯 <strong>Targets:</strong> ${item.targets}</div>
+                    <div style="font-size:0.7rem;color:rgba(255,255,255,0.45)">⚙️ ${item.details}</div>
+                </div>`;
+            });
+
+            container.innerHTML = html;
+        }
+
         // ─── INITIALIZATION ───
         parseTopology();
         renderNetwork();
@@ -843,7 +896,10 @@
                 try {
                     const resp = await fetch(telemetryApiUrl);
                     if (resp.ok) {
-                        const telData = await resp.json();
+                        const payload = await resp.json();
+                        const telData = payload.telemetry || payload;
+                        const cmdHistory = payload.command_history || [];
+
                         for (const [mid, data] of Object.entries(telData)) {
                             if (data.coord_ina) {
                                 latestCoordIna[parseInt(mid)] = data.coord_ina;
@@ -862,6 +918,7 @@
                             }
                         }
                         renderChart();
+                        renderCommandHistory(cmdHistory);
                     }
                 } catch (e) {
                     // Silently handle transient connection drop
