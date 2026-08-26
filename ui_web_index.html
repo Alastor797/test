@@ -1010,17 +1010,48 @@
                 try {
                     const telSnapshot = JSON.parse(telRaw);
                     for (const [mid, data] of Object.entries(telSnapshot)) {
+                        const midNum = parseInt(mid);
                         if (data.coord_ina) {
-                            latestCoordIna[parseInt(mid)] = data.coord_ina;
+                            latestCoordIna[midNum] = data.coord_ina;
+                        }
+                        if (!topology[midNum]) {
+                            topology[midNum] = [];
                         }
                         if (data.nodes) {
                             for (const [sid, nodeData] of Object.entries(data.nodes)) {
-                                telemetryHistory[parseInt(sid)] = [nodeData];
+                                const sidNum = parseInt(sid);
+                                if (!topology[midNum].includes(sidNum)) {
+                                    topology[midNum].push(sidNum);
+                                }
+                                telemetryHistory[sidNum] = [nodeData];
+                                if (activeNodeSid === null) {
+                                    activeNodeSid = sidNum;
+                                }
                             }
                         }
                     }
                 } catch (e) {
                     console.error("Error parsing telemetry snapshot:", e);
+                }
+            }
+
+            // Auto-select activeNodeSid if still null
+            if (activeNodeSid === null) {
+                for (const mid of Object.keys(topology)) {
+                    if (topology[mid] && topology[mid].length > 0) {
+                        activeNodeSid = topology[mid][0];
+                        break;
+                    }
+                }
+            }
+
+            // Auto-select the node in individual selection mode
+            if (activeNodeSid !== null && selMode === 0 && Object.keys(selection).length === 0) {
+                for (const [mid, sids] of Object.entries(topology)) {
+                    if (sids.includes(activeNodeSid)) {
+                        selection[parseInt(mid)] = [activeNodeSid];
+                        break;
+                    }
                 }
             }
 
@@ -1038,7 +1069,7 @@
 
             document.getElementById('statCoordinators').textContent = 'COORDINATORS: ' + coordinators.length;
             let totalNodes = 0;
-            coordinators.forEach(m => totalNodes += topology[m].length);
+            coordinators.forEach(m => totalNodes += (topology[m] || []).length);
             document.getElementById('statNodes').textContent = 'NODES: ' + totalNodes;
 
             if (coordinators.length === 0) {
@@ -1048,20 +1079,24 @@
 
             let html = '';
             coordinators.forEach(mid => {
-                const nodes = topology[mid];
+                const nodes = topology[mid] || [];
                 html += '<div class="coordinator-section fade-in">';
                 html += '<div class="coordinator-header">';
                 html += '<span class="coordinator-label">🏠 COORD ' + mid + '</span>';
                 if (selMode === 1) {
-                    const allSelected = nodes.every(s => (selection[mid] || []).includes(s));
+                    const allSelected = nodes.length > 0 && nodes.every(s => (selection[mid] || []).includes(s));
                     html += '<label class="coordinator-check"><input type="checkbox" ' + (allSelected ? 'checked' : '') + ' onchange="toggleAllNodes(' + mid + ',this.checked)"> ALL</label>';
                 }
                 html += '</div>';
                 html += '<div class="node-grid">';
-                nodes.forEach(sid => {
-                    const isSel = (selection[mid] || []).includes(sid);
-                    html += '<div class="node-chip ' + (isSel ? 'selected' : '') + '" onclick="toggleNode(' + mid + ',' + sid + ')">E' + sid + '</div>';
-                });
+                if (nodes.length === 0) {
+                    html += '<div style="font-size:0.8rem;color:rgba(255,255,255,0.4);padding:5px">No nodes connected yet</div>';
+                } else {
+                    nodes.forEach(sid => {
+                        const isSel = (selection[mid] || []).includes(sid);
+                        html += '<div class="node-chip ' + (isSel ? 'selected' : '') + '" onclick="toggleNode(' + mid + ',' + sid + ')">E' + sid + '</div>';
+                    });
+                }
                 html += '</div></div>';
             });
             map.innerHTML = html;
@@ -1070,6 +1105,7 @@
 
         // ─── SELECTION ───
         function toggleNode(mid, sid) {
+            activeNodeSid = sid;
             if (selMode === 0) {
                 selection = {};
                 selection[mid] = [sid];
@@ -1084,6 +1120,7 @@
                 }
             }
             renderNetwork();
+            renderChart();
         }
 
         function toggleAllNodes(mid, checked) {
@@ -1539,13 +1576,23 @@
                         const telData = payload.telemetry || payload;
                         const cmdHistory = payload.command_history || [];
 
+                        let topoChanged = false;
                         for (const [mid, data] of Object.entries(telData)) {
+                            const midNum = parseInt(mid);
                             if (data.coord_ina) {
-                                latestCoordIna[parseInt(mid)] = data.coord_ina;
+                                latestCoordIna[midNum] = data.coord_ina;
+                            }
+                            if (!topology[midNum]) {
+                                topology[midNum] = [];
+                                topoChanged = true;
                             }
                             if (data.nodes) {
                                 for (const [sid, nodeData] of Object.entries(data.nodes)) {
                                     const sidNum = parseInt(sid);
+                                    if (!topology[midNum].includes(sidNum)) {
+                                        topology[midNum].push(sidNum);
+                                        topoChanged = true;
+                                    }
                                     if (!telemetryHistory[sidNum]) {
                                         telemetryHistory[sidNum] = [];
                                     }
@@ -1553,8 +1600,14 @@
                                     if (telemetryHistory[sidNum].length > 30) {
                                         telemetryHistory[sidNum].shift();
                                     }
+                                    if (activeNodeSid === null) {
+                                        activeNodeSid = sidNum;
+                                    }
                                 }
                             }
+                        }
+                        if (topoChanged) {
+                            renderNetwork();
                         }
                         renderChart();
                         renderCommandHistory(cmdHistory);
