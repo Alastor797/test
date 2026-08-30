@@ -723,6 +723,7 @@
         <div class="stats-bar">
             <div class="stat-chip" id="statCoordinators">COORDINATORS: 0</div>
             <div class="stat-chip" id="statNodes">NODES: 0</div>
+            <div class="stat-chip" id="statConnection" style="color:var(--accent);font-weight:700">🔄 LINK: INITIALIZING...</div>
         </div>
 
         <!-- LEFT COLUMN: CONTROLS & COMMANDS -->
@@ -1577,27 +1578,51 @@
         highlightPreset(0);
         renderCarousel();
 
-        // ─── RESILIENT TELEMETRY POLLING WITH DUAL-FAILOVER ───
-        async function fetchTelemetrySnapshot() {
-            const targets = [];
-            if (activeApiUrl) targets.push(activeApiUrl);
-            if (telemetryApiUrl && !targets.includes(telemetryApiUrl)) targets.push(telemetryApiUrl);
-            if (telemetryFallbackApiUrl && !targets.includes(telemetryFallbackApiUrl)) targets.push(telemetryFallbackApiUrl);
+        // ─── RESILIENT TELEMETRY POLLING WITH DUAL-FAILOVER & LIVE DIAGNOSTICS ───
+        let totalRxCount = 0;
+        let lastRxTime = 0;
+        let pollAttemptCount = 0;
 
-            for (const url of targets) {
+        function updateLinkStatusBadge(statusText, colorHex) {
+            const badge = document.getElementById('statConnection');
+            if (badge) {
+                badge.textContent = statusText;
+                badge.style.color = colorHex;
+            }
+        }
+
+        async function fetchTelemetrySnapshot() {
+            pollAttemptCount++;
+            const candidateList = [];
+
+            if (telemetryApiUrl) candidateList.push({ url: telemetryApiUrl, name: "CLOUDFLARE" });
+            if (telemetryFallbackApiUrl) candidateList.push({ url: telemetryFallbackApiUrl, name: "LOCAL LAN" });
+
+            if (candidateList.length === 0) {
+                updateLinkStatusBadge("⚠️ NO API CONFIGURED", "#ffb703");
+                return null;
+            }
+
+            for (const cand of candidateList) {
                 try {
                     const ctrl = new AbortController();
-                    const timeoutId = setTimeout(() => ctrl.abort(), 3500);
-                    const resp = await fetch(url, { signal: ctrl.signal });
+                    const timeoutId = setTimeout(() => ctrl.abort(), 3000);
+                    const resp = await fetch(cand.url, { signal: ctrl.signal, cache: "no-store" });
                     clearTimeout(timeoutId);
                     if (resp.ok) {
-                        activeApiUrl = url; // Remember verified responsive endpoint
-                        return await resp.json();
+                        const data = await resp.json();
+                        totalRxCount++;
+                        lastRxTime = Date.now();
+                        updateLinkStatusBadge(`🟢 ${cand.name} (Rx #${totalRxCount})`, "#00e676");
+                        return data;
                     }
                 } catch (e) {
-                    // Try next fallback endpoint
+                    // Try next candidate
                 }
             }
+
+            const timeSinceLast = lastRxTime > 0 ? Math.round((Date.now() - lastRxTime) / 1000) + "s ago" : "NO RX";
+            updateLinkStatusBadge(`🔴 RETRYING #${pollAttemptCount} (Last: ${timeSinceLast})`, "#ff5252");
             return null;
         }
 
