@@ -1577,7 +1577,7 @@
             for (const url of targets) {
                 try {
                     const ctrl = new AbortController();
-                    const timeoutId = setTimeout(() => ctrl.abort(), 2000);
+                    const timeoutId = setTimeout(() => ctrl.abort(), 3500);
                     const resp = await fetch(url, { signal: ctrl.signal });
                     clearTimeout(timeoutId);
                     if (resp.ok) {
