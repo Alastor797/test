@@ -1494,13 +1494,23 @@
             const range = (p.max && p.min) ? (p.max - p.min) : 100;
             const minBound = p.min !== undefined ? p.min : 0;
 
-            for (let i = 0; i < count; i++) {
-                const x = (count === 1) ? 200 : (i / (count - 1)) * 400;
-                const val = history[i][p.key];
+            if (count === 1) {
+                const val = history[0][p.key];
                 if (val !== undefined && val !== null) {
                     const norm = Math.max(0, Math.min(1, (val - minBound) / range));
                     const y = 160 - (norm * 100 + 30);
-                    pointsArr.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+                    pointsArr.push(`0,${y.toFixed(1)}`);
+                    pointsArr.push(`400,${y.toFixed(1)}`);
+                }
+            } else {
+                for (let i = 0; i < count; i++) {
+                    const x = (i / (count - 1)) * 400;
+                    const val = history[i][p.key];
+                    if (val !== undefined && val !== null) {
+                        const norm = Math.max(0, Math.min(1, (val - minBound) / range));
+                        const y = 160 - (norm * 100 + 30);
+                        pointsArr.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+                    }
                 }
             }
 
