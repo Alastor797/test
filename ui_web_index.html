@@ -937,6 +937,8 @@
         let telemetryHistory = {};  // { sid: [ {gas_t, gas_rh, co2, soil_t, soil_h, soil_ec, soil_ph, ds_temp, pwr_v, pwr_ma, pwr_mw, pos_gate_motor1, pos_gate_motor2, valve_relay_on, gate_motor_on}, ... ] }
         let latestCoordIna = {};    // { coord_id: {v, ma, mw} }
         let telemetryApiUrl = null;
+        let telemetryFallbackApiUrl = null;
+        let activeApiUrl = null;
 
         function applySysConfig(cfg) {
             if (!cfg) return;
@@ -1055,11 +1057,12 @@
                 }
             }
 
-            // Parse live HTTP API URL for 2-second polling
+            // Parse live HTTP API URL for 2-second polling with automatic failover
             const apiRaw = params.get('api');
-            if (apiRaw) {
-                telemetryApiUrl = apiRaw;
-            }
+            if (apiRaw) telemetryApiUrl = apiRaw;
+            const fbRaw = params.get('api_fb');
+            if (fbRaw) telemetryFallbackApiUrl = fbRaw;
+            activeApiUrl = telemetryApiUrl || telemetryFallbackApiUrl;
         }
 
         // ─── RENDER NETWORK MAP ───
@@ -1564,57 +1567,76 @@
         highlightPreset(0);
         renderCarousel();
 
-        // ─── LIVE 2-SECOND POLLING LOOP (Phase 2) ───
-        if (telemetryApiUrl) {
-            setInterval(async () => {
-                try {
-                    const resp = await fetch(telemetryApiUrl);
-                    if (resp.ok) {
-                        const payload = await resp.json();
-                        if (payload.sysCfg) applySysConfig(payload.sysCfg);
-                        else if (payload.config) applySysConfig(payload.config);
-                        const telData = payload.telemetry || payload;
-                        const cmdHistory = payload.command_history || [];
+        // ─── RESILIENT TELEMETRY POLLING WITH DUAL-FAILOVER ───
+        async function fetchTelemetrySnapshot() {
+            const targets = [];
+            if (activeApiUrl) targets.push(activeApiUrl);
+            if (telemetryApiUrl && !targets.includes(telemetryApiUrl)) targets.push(telemetryApiUrl);
+            if (telemetryFallbackApiUrl && !targets.includes(telemetryFallbackApiUrl)) targets.push(telemetryFallbackApiUrl);
 
-                        let topoChanged = false;
-                        for (const [mid, data] of Object.entries(telData)) {
-                            const midNum = parseInt(mid);
-                            if (data.coord_ina) {
-                                latestCoordIna[midNum] = data.coord_ina;
-                            }
-                            if (!topology[midNum]) {
-                                topology[midNum] = [];
-                                topoChanged = true;
-                            }
-                            if (data.nodes) {
-                                for (const [sid, nodeData] of Object.entries(data.nodes)) {
-                                    const sidNum = parseInt(sid);
-                                    if (!topology[midNum].includes(sidNum)) {
-                                        topology[midNum].push(sidNum);
-                                        topoChanged = true;
-                                    }
-                                    if (!telemetryHistory[sidNum]) {
-                                        telemetryHistory[sidNum] = [];
-                                    }
-                                    telemetryHistory[sidNum].push(nodeData);
-                                    if (telemetryHistory[sidNum].length > 30) {
-                                        telemetryHistory[sidNum].shift();
-                                    }
-                                    if (activeNodeSid === null) {
-                                        activeNodeSid = sidNum;
-                                    }
+            for (const url of targets) {
+                try {
+                    const ctrl = new AbortController();
+                    const timeoutId = setTimeout(() => ctrl.abort(), 2000);
+                    const resp = await fetch(url, { signal: ctrl.signal });
+                    clearTimeout(timeoutId);
+                    if (resp.ok) {
+                        activeApiUrl = url; // Remember verified responsive endpoint
+                        return await resp.json();
+                    }
+                } catch (e) {
+                    // Try next fallback endpoint
+                }
+            }
+            return null;
+        }
+
+        if (telemetryApiUrl || telemetryFallbackApiUrl) {
+            setInterval(async () => {
+                const payload = await fetchTelemetrySnapshot();
+                if (!payload) return;
+                try {
+                    if (payload.sysCfg) applySysConfig(payload.sysCfg);
+                    else if (payload.config) applySysConfig(payload.config);
+                    const telData = payload.telemetry || payload;
+                    const cmdHistory = payload.command_history || [];
+
+                    let topoChanged = false;
+                    for (const [mid, data] of Object.entries(telData)) {
+                        const midNum = parseInt(mid);
+                        if (data.coord_ina) {
+                            latestCoordIna[midNum] = data.coord_ina;
+                        }
+                        if (!topology[midNum]) {
+                            topology[midNum] = [];
+                            topoChanged = true;
+                        }
+                        if (data.nodes) {
+                            for (const [sid, nodeData] of Object.entries(data.nodes)) {
+                                const sidNum = parseInt(sid);
+                                if (!topology[midNum].includes(sidNum)) {
+                                    topology[midNum].push(sidNum);
+                                    topoChanged = true;
+                                }
+                                if (!telemetryHistory[sidNum]) {
+                                    telemetryHistory[sidNum] = [];
+                                }
+                                telemetryHistory[sidNum].push(nodeData);
+                                if (telemetryHistory[sidNum].length > 30) {
+                                    telemetryHistory[sidNum].shift();
+                                }
+                                if (activeNodeSid === null) {
+                                    activeNodeSid = sidNum;
                                 }
                             }
                         }
-                        if (topoChanged) {
-                            renderNetwork();
-                        }
-                        renderChart();
-                        renderCommandHistory(cmdHistory);
                     }
-                } catch (e) {
-                    // Silently handle transient connection drop
-                }
+                    if (topoChanged) {
+                        renderNetwork();
+                    }
+                    renderChart();
+                    renderCommandHistory(cmdHistory);
+                } catch (err) {}
             }, 1500);
         }
     </script>
