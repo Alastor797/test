@@ -784,6 +784,26 @@
                             <button class="preset-btn" id="pre90">Closed</button>
                         </div>
                     </div>
+                    <div style="height:12px"></div>
+                    <div>
+                        <div class="label-row">
+                            <span style="font-size:.75rem;font-weight:700;color:rgba(255,255,255,0.6);text-transform:uppercase">Hold Duration (Timer)</span>
+                            <span id="mDurationVal" class="val" style="color:var(--primary);font-weight:700">30 min</span>
+                        </div>
+                        <div class="precision-control">
+                            <button class="step-btn" onclick="stepManualDuration(-1)">−</button>
+                            <input type="number" id="mDurationInput" class="num-input" min="0" max="60" value="30" step="1" oninput="syncManualDurationFromInput()">
+                            <span class="num-unit">min</span>
+                            <button class="step-btn" onclick="stepManualDuration(1)">+</button>
+                        </div>
+                        <input type="range" id="mDurationSlider" min="0" max="60" value="30" step="1" oninput="syncManualDurationFromSlider()">
+                        <div class="presets-row">
+                            <button class="preset-btn" id="mPre0" onclick="setManualDuration(0)">0m</button>
+                            <button class="preset-btn" id="mPre15" onclick="setManualDuration(15)">15m</button>
+                            <button class="preset-btn active-preset" id="mPre30" onclick="setManualDuration(30)">30m</button>
+                            <button class="preset-btn" id="mPre60" onclick="setManualDuration(60)">60m</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1038,7 +1058,7 @@
                 }
             }
 
-            // Auto-select activeNodeSid if still null
+            // Set activeNodeSid for telemetry carousel preview if null
             if (activeNodeSid === null) {
                 for (const mid of Object.keys(topology)) {
                     if (topology[mid] && topology[mid].length > 0) {
@@ -1048,15 +1068,7 @@
                 }
             }
 
-            // Auto-select the node in individual selection mode
-            if (activeNodeSid !== null && selMode === 0 && Object.keys(selection).length === 0) {
-                for (const [mid, sids] of Object.entries(topology)) {
-                    if (sids.includes(activeNodeSid)) {
-                        selection[parseInt(mid)] = [activeNodeSid];
-                        break;
-                    }
-                }
-            }
+            // Selection starts 100% empty: User must explicitly choose a target
 
             // Parse live HTTP API URL for 2-second polling with automatic failover
             const apiRaw = params.get('api');
@@ -1240,6 +1252,48 @@
             document.getElementById('pre90').classList.toggle('active-preset', val === MOTOR_ANGLE_CLOSED);
         }
 
+        // ─── MANUAL HOLD DURATION SLIDER & STEPPER (0 - 60 min) ───
+        function clampManualDuration(val) {
+            let n = parseInt(val);
+            if (isNaN(n)) return 30;
+            return Math.max(0, Math.min(60, n));
+        }
+
+        function syncManualDurationFromInput() {
+            const raw = document.getElementById('mDurationInput').value;
+            const val = clampManualDuration(raw);
+            document.getElementById('mDurationSlider').value = val;
+            document.getElementById('mDurationVal').innerText = val + ' min';
+            highlightManualDurationPreset(val);
+        }
+
+        function syncManualDurationFromSlider() {
+            const val = parseInt(document.getElementById('mDurationSlider').value) || 0;
+            document.getElementById('mDurationInput').value = val;
+            document.getElementById('mDurationVal').innerText = val + ' min';
+            highlightManualDurationPreset(val);
+        }
+
+        function stepManualDuration(amount) {
+            const current = parseInt(document.getElementById('mDurationInput').value) || 0;
+            setManualDuration(current + amount);
+        }
+
+        function setManualDuration(raw) {
+            const val = clampManualDuration(raw);
+            document.getElementById('mDurationInput').value = val;
+            document.getElementById('mDurationSlider').value = val;
+            document.getElementById('mDurationVal').innerText = val + ' min';
+            highlightManualDurationPreset(val);
+        }
+
+        function highlightManualDurationPreset(val) {
+            ['0', '15', '30', '60'].forEach(p => {
+                const el = document.getElementById('mPre' + p);
+                if (el) el.classList.toggle('active-preset', parseInt(p) === val);
+            });
+        }
+
         // ─── DEEPSLEEP SLIDER ───
         function updateSleepVal() {
             document.getElementById('sVal').innerText = document.getElementById('sSlider').value + ' min';
@@ -1254,8 +1308,11 @@
                 if (document.getElementById('forceCheck').checked) flags |= (1 << 1);
             }
 
-            const minutes = parseInt(document.getElementById('sSlider').value);
-            const seconds = modeSleep === 1 ? (minutes * 60) : 0;
+            const sleepMinutes = parseInt(document.getElementById('sSlider').value) || 2;
+            const manualMinutes = parseInt(document.getElementById('mDurationSlider').value) || 30;
+
+            // Duration in seconds: if manual mode, send manualMinutes * 60; if deepsleep custom, send sleepMinutes * 60
+            const seconds = (modeControl === 1) ? (manualMinutes * 60) : (modeSleep === 1 ? (sleepMinutes * 60) : 0);
 
             // Build targets from selection
             const targets = [];
