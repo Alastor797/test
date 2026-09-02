@@ -755,6 +755,7 @@
                     <button class="mode-btn" onclick="setControlMode(1)">MANUAL</button>
                 </div>
                 <div id="actuatorsSec" class="dynamic-section">
+                    <!-- IRRIGATION CONTROL -->
                     <label class="toggle-row toggle-irrigation">
                         <span
                             style="font-size:.85rem;font-weight:700;color:var(--primary);text-transform:uppercase">Irrigation
@@ -768,9 +769,31 @@
                             </div>
                         </div>
                     </label>
-                    <div style="height:10px"></div>
+                    <div style="margin-top:8px">
+                        <div class="label-row">
+                            <span style="font-size:.75rem;font-weight:700;color:rgba(255,255,255,0.6);text-transform:uppercase">Irrigation Timer (Duration)</span>
+                            <span id="vDurationVal" class="val" style="color:var(--primary);font-weight:700">15 min</span>
+                        </div>
+                        <div class="precision-control">
+                            <button class="step-btn" onclick="stepValveDuration(-1)">−</button>
+                            <input type="number" id="vDurationInput" class="num-input" min="0" max="60" value="15" step="1" oninput="syncValveDurationFromInput()">
+                            <span class="num-unit">min</span>
+                            <button class="step-btn" onclick="stepValveDuration(1)">+</button>
+                        </div>
+                        <input type="range" id="vDurationSlider" min="0" max="60" value="15" step="1" oninput="syncValveDurationFromSlider()">
+                        <div class="presets-row">
+                            <button class="preset-btn" id="vPre0" onclick="setValveDuration(0)">0m</button>
+                            <button class="preset-btn" id="vPre5" onclick="setValveDuration(5)">5m</button>
+                            <button class="preset-btn active-preset" id="vPre15" onclick="setValveDuration(15)">15m</button>
+                            <button class="preset-btn" id="vPre30" onclick="setValveDuration(30)">30m</button>
+                        </div>
+                    </div>
+
+                    <div style="height:12px;border-bottom:1px solid rgba(255,255,255,0.06);margin:8px 0"></div>
+
+                    <!-- AIR (GATE) CONTROL -->
                     <div>
-                        <div class="label-row"><span>Air (Gate)</span></div>
+                        <div class="label-row"><span>Air (Gate Position)</span></div>
                         <div class="precision-control">
                             <button class="step-btn" onclick="stepVal(-1)">−</button>
                             <input type="number" id="cInput" class="num-input" step="1" oninput="syncFromInput()">
@@ -784,24 +807,23 @@
                             <button class="preset-btn" id="pre90">Closed</button>
                         </div>
                     </div>
-                    <div style="height:12px"></div>
-                    <div>
+                    <div style="margin-top:8px">
                         <div class="label-row">
-                            <span style="font-size:.75rem;font-weight:700;color:rgba(255,255,255,0.6);text-transform:uppercase">Hold Duration (Timer)</span>
-                            <span id="mDurationVal" class="val" style="color:var(--primary);font-weight:700">30 min</span>
+                            <span style="font-size:.75rem;font-weight:700;color:rgba(255,255,255,0.6);text-transform:uppercase">Damper Timer (Hold Duration)</span>
+                            <span id="cDurationVal" class="val" style="color:var(--primary);font-weight:700">30 min</span>
                         </div>
                         <div class="precision-control">
-                            <button class="step-btn" onclick="stepManualDuration(-1)">−</button>
-                            <input type="number" id="mDurationInput" class="num-input" min="0" max="60" value="30" step="1" oninput="syncManualDurationFromInput()">
+                            <button class="step-btn" onclick="stepDamperDuration(-1)">−</button>
+                            <input type="number" id="cDurationInput" class="num-input" min="0" max="60" value="30" step="1" oninput="syncDamperDurationFromInput()">
                             <span class="num-unit">min</span>
-                            <button class="step-btn" onclick="stepManualDuration(1)">+</button>
+                            <button class="step-btn" onclick="stepDamperDuration(1)">+</button>
                         </div>
-                        <input type="range" id="mDurationSlider" min="0" max="60" value="30" step="1" oninput="syncManualDurationFromSlider()">
+                        <input type="range" id="cDurationSlider" min="0" max="60" value="30" step="1" oninput="syncDamperDurationFromSlider()">
                         <div class="presets-row">
-                            <button class="preset-btn" id="mPre0" onclick="setManualDuration(0)">0m</button>
-                            <button class="preset-btn" id="mPre15" onclick="setManualDuration(15)">15m</button>
-                            <button class="preset-btn active-preset" id="mPre30" onclick="setManualDuration(30)">30m</button>
-                            <button class="preset-btn" id="mPre60" onclick="setManualDuration(60)">60m</button>
+                            <button class="preset-btn" id="cPre0" onclick="setDamperDuration(0)">0m</button>
+                            <button class="preset-btn" id="cPre15" onclick="setDamperDuration(15)">15m</button>
+                            <button class="preset-btn active-preset" id="cPre30" onclick="setDamperDuration(30)">30m</button>
+                            <button class="preset-btn" id="cPre60" onclick="setDamperDuration(60)">60m</button>
                         </div>
                     </div>
                 </div>
@@ -1252,44 +1274,86 @@
             document.getElementById('pre90').classList.toggle('active-preset', val === MOTOR_ANGLE_CLOSED);
         }
 
-        // ─── MANUAL HOLD DURATION SLIDER & STEPPER (0 - 60 min) ───
-        function clampManualDuration(val) {
+        // ─── IRRIGATION DURATION SLIDER & STEPPER (0 - 60 min) ───
+        function clampValveDuration(val) {
+            let n = parseInt(val);
+            if (isNaN(n)) return 15;
+            return Math.max(0, Math.min(60, n));
+        }
+
+        function syncValveDurationFromInput() {
+            const raw = document.getElementById('vDurationInput').value;
+            const val = clampValveDuration(raw);
+            document.getElementById('vDurationSlider').value = val;
+            document.getElementById('vDurationVal').innerText = val + ' min';
+            highlightValveDurationPreset(val);
+        }
+
+        function syncValveDurationFromSlider() {
+            const val = parseInt(document.getElementById('vDurationSlider').value) || 0;
+            document.getElementById('vDurationInput').value = val;
+            document.getElementById('vDurationVal').innerText = val + ' min';
+            highlightValveDurationPreset(val);
+        }
+
+        function stepValveDuration(amount) {
+            const current = parseInt(document.getElementById('vDurationInput').value) || 0;
+            setValveDuration(current + amount);
+        }
+
+        function setValveDuration(raw) {
+            const val = clampValveDuration(raw);
+            document.getElementById('vDurationInput').value = val;
+            document.getElementById('vDurationSlider').value = val;
+            document.getElementById('vDurationVal').innerText = val + ' min';
+            highlightValveDurationPreset(val);
+        }
+
+        function highlightValveDurationPreset(val) {
+            ['0', '5', '15', '30'].forEach(p => {
+                const el = document.getElementById('vPre' + p);
+                if (el) el.classList.toggle('active-preset', parseInt(p) === val);
+            });
+        }
+
+        // ─── DAMPER DURATION SLIDER & STEPPER (0 - 60 min) ───
+        function clampDamperDuration(val) {
             let n = parseInt(val);
             if (isNaN(n)) return 30;
             return Math.max(0, Math.min(60, n));
         }
 
-        function syncManualDurationFromInput() {
-            const raw = document.getElementById('mDurationInput').value;
-            const val = clampManualDuration(raw);
-            document.getElementById('mDurationSlider').value = val;
-            document.getElementById('mDurationVal').innerText = val + ' min';
-            highlightManualDurationPreset(val);
+        function syncDamperDurationFromInput() {
+            const raw = document.getElementById('cDurationInput').value;
+            const val = clampDamperDuration(raw);
+            document.getElementById('cDurationSlider').value = val;
+            document.getElementById('cDurationVal').innerText = val + ' min';
+            highlightDamperDurationPreset(val);
         }
 
-        function syncManualDurationFromSlider() {
-            const val = parseInt(document.getElementById('mDurationSlider').value) || 0;
-            document.getElementById('mDurationInput').value = val;
-            document.getElementById('mDurationVal').innerText = val + ' min';
-            highlightManualDurationPreset(val);
+        function syncDamperDurationFromSlider() {
+            const val = parseInt(document.getElementById('cDurationSlider').value) || 0;
+            document.getElementById('cDurationInput').value = val;
+            document.getElementById('cDurationVal').innerText = val + ' min';
+            highlightDamperDurationPreset(val);
         }
 
-        function stepManualDuration(amount) {
-            const current = parseInt(document.getElementById('mDurationInput').value) || 0;
-            setManualDuration(current + amount);
+        function stepDamperDuration(amount) {
+            const current = parseInt(document.getElementById('cDurationInput').value) || 0;
+            setDamperDuration(current + amount);
         }
 
-        function setManualDuration(raw) {
-            const val = clampManualDuration(raw);
-            document.getElementById('mDurationInput').value = val;
-            document.getElementById('mDurationSlider').value = val;
-            document.getElementById('mDurationVal').innerText = val + ' min';
-            highlightManualDurationPreset(val);
+        function setDamperDuration(raw) {
+            const val = clampDamperDuration(raw);
+            document.getElementById('cDurationInput').value = val;
+            document.getElementById('cDurationSlider').value = val;
+            document.getElementById('cDurationVal').innerText = val + ' min';
+            highlightDamperDurationPreset(val);
         }
 
-        function highlightManualDurationPreset(val) {
+        function highlightDamperDurationPreset(val) {
             ['0', '15', '30', '60'].forEach(p => {
-                const el = document.getElementById('mPre' + p);
+                const el = document.getElementById('cPre' + p);
                 if (el) el.classList.toggle('active-preset', parseInt(p) === val);
             });
         }
@@ -1309,10 +1373,12 @@
             }
 
             const sleepMinutes = parseInt(document.getElementById('sSlider').value) || 2;
-            const manualMinutes = parseInt(document.getElementById('mDurationSlider').value) || 30;
+            const valveMinutes = parseInt(document.getElementById('vDurationInput').value) || 15;
+            const damperMinutes = parseInt(document.getElementById('cDurationInput').value) || 30;
 
-            // Duration in seconds: if manual mode, send manualMinutes * 60; if deepsleep custom, send sleepMinutes * 60
-            const seconds = (modeControl === 1) ? (manualMinutes * 60) : (modeSleep === 1 ? (sleepMinutes * 60) : 0);
+            const s_v = (modeControl === 1) ? (valveMinutes * 60) : 0;
+            const s_c = (modeControl === 1) ? (damperMinutes * 60) : 0;
+            const s_ds = (modeSleep === 1) ? (sleepMinutes * 60) : 0;
 
             // Build targets from selection
             const targets = [];
@@ -1334,7 +1400,9 @@
                 flags: flags,
                 v: document.getElementById('vToggle').checked ? rOn : rOff,
                 c: clampAngle(document.getElementById('cInput').value),
-                s: seconds,
+                s: s_c || s_ds,
+                s_v: s_v,
+                s_c: s_c,
                 targets: targets
             };
 
