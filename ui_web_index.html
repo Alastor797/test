@@ -1281,14 +1281,48 @@
                 targets: targets
             };
 
+            const payload = JSON.stringify(data);
             const btn = document.getElementById('btnApply');
-            btn.innerText = "SYNC...";
+            btn.innerText = "TRANSMITTING...";
             btn.style.opacity = "0.6";
 
-            setTimeout(() => {
-                tg.sendData(JSON.stringify(data));
-                tg.close();
-            }, 600);
+            // If active HTTP API endpoint exists, dispatch via direct REST API so panel stays 100% open!
+            if (activeApiUrl) {
+                const cmdUrl = activeApiUrl.replace('/telemetry', '/command');
+                fetch(cmdUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: payload
+                }).then(resp => {
+                    if (resp.ok) {
+                        btn.innerText = "COMMAND SENT ✅";
+                        setTimeout(() => {
+                            btn.innerText = "SEND COMMAND";
+                            btn.style.opacity = "1";
+                        }, 1600);
+                    } else {
+                        btn.innerText = "DISPATCH FAILED ⚠️";
+                        setTimeout(() => {
+                            btn.innerText = "SEND COMMAND";
+                            btn.style.opacity = "1";
+                        }, 2000);
+                    }
+                }).catch(err => {
+                    try { tg.sendData(payload); } catch(e) {}
+                    btn.innerText = "COMMAND SENT ✅";
+                    setTimeout(() => {
+                        btn.innerText = "SEND COMMAND";
+                        btn.style.opacity = "1";
+                    }, 1600);
+                });
+            } else {
+                try { tg.sendData(payload); } catch(e) {}
+                btn.innerText = "COMMAND SENT ✅";
+                setTimeout(() => {
+                    btn.innerText = "SEND COMMAND";
+                    btn.style.opacity = "1";
+                }, 1600);
+            }
         }
 
         // ─── TELEMETRY CAROUSEL & ANALYTICS STATE ───
