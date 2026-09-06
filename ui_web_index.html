@@ -1705,7 +1705,7 @@
                 let badgeClass = 'rgba(255,183,3,0.15)';
                 let borderColor = 'rgba(255,183,3,0.4)';
                 let textColor = '#ffb703';
-                let icon = '⏳';
+                let canCancel = false;
 
                 if (item.status === 'SUCCESS') {
                     badgeClass = 'rgba(0,230,118,0.15)';
@@ -1717,13 +1717,27 @@
                     borderColor = 'rgba(255,42,95,0.4)';
                     textColor = '#ff2a5f';
                     icon = '🔴';
+                } else if (item.status === 'CANCELLED') {
+                    badgeClass = 'rgba(255,255,255,0.06)';
+                    borderColor = 'rgba(255,255,255,0.2)';
+                    textColor = 'rgba(255,255,255,0.5)';
+                    icon = '🚫';
+                } else {
+                    // Pending, WAITING, or TRANSMITTING -> allow user cancellation
+                    canCancel = true;
                 }
+
+                const cancelBtnHtml = canCancel ? 
+                    `<button class="btn-cancel-cmd" onclick="cancelCommand('${item.id}', event)" title="Cancel order ${item.id}" style="background:rgba(255,42,95,0.15);border:1px solid rgba(255,42,95,0.6);color:#ff2a5f;border-radius:8px;padding:2px 8px;font-size:0.7rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px;transition:0.2s">✕ Cancel</button>` : '';
 
                 html += `
                 <div style="background:rgba(255,255,255,0.02);border:1px solid ${borderColor};border-radius:12px;padding:8px 12px;display:flex;flex-direction:column;gap:4px">
                     <div style="display:flex;justify-content:space-between;align-items:center">
                         <span style="font-family:'Orbitron';font-size:0.75rem;font-weight:700;color:var(--primary)">${item.id} <span style="font-size:0.65rem;color:rgba(255,255,255,0.4)">(${item.timestamp})</span></span>
-                        <span style="background:${badgeClass};border:1px solid ${borderColor};color:${textColor};padding:2px 8px;border-radius:10px;font-size:0.68rem;font-weight:700;letter-spacing:0.5px">${icon} ${item.status_label}</span>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <span style="background:${badgeClass};border:1px solid ${borderColor};color:${textColor};padding:2px 8px;border-radius:10px;font-size:0.68rem;font-weight:700;letter-spacing:0.5px">${icon} ${item.status_label}</span>
+                            ${cancelBtnHtml}
+                        </div>
                     </div>
                     <div style="font-size:0.72rem;color:rgba(255,255,255,0.7)">🎯 <strong>Targets:</strong> ${item.targets}</div>
                     <div style="font-size:0.7rem;color:rgba(255,255,255,0.45)">⚙️ ${item.details}</div>
@@ -1731,6 +1745,41 @@
             });
 
             container.innerHTML = html;
+        }
+
+        async function cancelCommand(cmdId, event) {
+            if (event) event.stopPropagation();
+            if (!cmdId) return;
+            const btn = event ? event.target : null;
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '...';
+            }
+            try {
+                let baseUrl = (activeApiUrl || telemetryApiUrl || telemetryFallbackApiUrl || '');
+                let cmdUrl = baseUrl ? baseUrl.replace(/\/telemetry.*$/, '/command') : '/command';
+
+                const response = await fetch(cmdUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'cancel', cmd_id: cmdId })
+                });
+
+                if (window._latestCmdHistory) {
+                    const entry = window._latestCmdHistory.find(x => x.id === cmdId);
+                    if (entry) {
+                        entry.status = 'CANCELLED';
+                        entry.status_label = 'CANCELLED 🚫';
+                        renderCommandHistory(window._latestCmdHistory);
+                    }
+                }
+            } catch (err) {
+                console.error("Cancel order error:", err);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '✕ Cancel';
+                }
+            }
         }
 
         // ─── INITIALIZATION ───
