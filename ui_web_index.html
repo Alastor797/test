@@ -233,6 +233,58 @@
             transform: scale(.95)
         }
 
+        .coord-chip {
+            padding: 9px 18px;
+            border-radius: 12px;
+            font-size: .85rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all .3s;
+            border: 1px solid rgba(255, 255, 255, .15);
+            background: rgba(255, 255, 255, .04);
+            color: rgba(255, 255, 255, .6);
+            user-select: none;
+            font-family: 'Orbitron', sans-serif;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .coord-chip.selected {
+            background: linear-gradient(135deg, rgba(0, 240, 255, .25), rgba(123, 44, 191, .3));
+            border-color: var(--primary);
+            color: #00f0ff;
+            box-shadow: 0 0 14px rgba(0, 240, 255, .3);
+        }
+
+        .coord-chip:active {
+            transform: scale(.95);
+        }
+
+        .custom-coord-block {
+            background: rgba(0, 240, 255, 0.03);
+            border: 1px solid rgba(0, 240, 255, 0.1);
+            border-radius: 14px;
+            padding: 12px 14px;
+            margin-bottom: 10px;
+        }
+
+        .custom-coord-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.85rem;
+            color: var(--primary);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .custom-tree-arrow {
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
         .coordinator-check {
             display: flex;
             align-items: center;
@@ -863,6 +915,7 @@
             <!-- SECTION 4: TELEMETRY & ANALYTICS CAROUSEL -->
             <div class="control-card">
                 <div class="section-title">TELEMETRY & ANALYTICS</div>
+                <div id="telemetryTargetBadge" style="font-family:'Orbitron',sans-serif;font-size:0.75rem;color:rgba(255,255,255,0.45);letter-spacing:1px;margin-top:-6px;margin-bottom:12px">TARGET: NONE SELECTED (SELECT COORD & NODE)</div>
 
                 <div class="carousel-nav">
                     <button class="nav-arrow" onclick="prevSlide()">‹</button>
@@ -977,7 +1030,11 @@
         let modeSleep = 0;     // 0: Normal, 1: Custom
         let topology = {};     // { coordinator_sid: [node_sid1, node_sid2, ...] }
         let selection = {};    // { coordinator_sid: [node_sid1, node_sid2, ...] }
-        let telemetryHistory = {};  // { node_sid: [ {gas_t, gas_rh, co2, ...}, ... ] }
+        let selectedCoordinatorSid = null; // for INDIVIDUAL mode coordinator selection
+        let selectedNodeSid = null;        // for INDIVIDUAL mode node selection
+        let activeCoordinatorSid = null;   // currently previewed coordinator in telemetry
+        let activeNodeSid = null;          // currently previewed node in telemetry
+        let telemetryHistory = {};  // { "coordSid_nodeSid": [ {gas_t, gas_rh, co2, ...}, ... ] }
         let latestCoordIna = {};    // { coordinator_sid: {coord_v, coord_ma, coord_mw} }
         let telemetryApiUrl = null;
         let telemetryFallbackApiUrl = null;
@@ -1068,10 +1125,8 @@
                                 if (!topology[coordSidNum].includes(nodeSidNum)) {
                                     topology[coordSidNum].push(nodeSidNum);
                                 }
-                                telemetryHistory[nodeSidNum] = [nodeData];
-                                if (activeNodeSid === null) {
-                                    activeNodeSid = nodeSidNum;
-                                }
+                                const key = coordSidNum + '_' + nodeSidNum;
+                                telemetryHistory[key] = [nodeData];
                             }
                         }
                     }
@@ -1080,17 +1135,12 @@
                 }
             }
 
-            // Set activeNodeSid for telemetry carousel preview if null
-            if (activeNodeSid === null) {
-                for (const coordinator_sid of Object.keys(topology)) {
-                    if (topology[coordinator_sid] && topology[coordinator_sid].length > 0) {
-                        activeNodeSid = topology[coordinator_sid][0];
-                        break;
-                    }
-                }
-            }
-
-            // Selection starts 100% empty: User must explicitly choose a target
+            // Selection starts 100% empty: User must explicitly choose a coordinator and node!
+            selectedCoordinatorSid = null;
+            selectedNodeSid = null;
+            activeCoordinatorSid = null;
+            activeNodeSid = null;
+            selection = {};
 
             // Parse live HTTP API URL for 2-second polling with automatic failover
             const apiRaw = params.get('api');
@@ -1112,68 +1162,193 @@
 
             if (coordinators.length === 0) {
                 map.innerHTML = '<div class="empty-state">No coordinators detected</div>';
+                updateSummary();
                 return;
             }
 
             let html = '';
-            coordinators.forEach(coordinator_sid => {
-                const nodes = topology[coordinator_sid] || [];
-                html += '<div class="coordinator-section fade-in">';
-                html += '<div class="coordinator-header">';
-                html += '<span class="coordinator-label">🏠 COORD ' + coordinator_sid + '</span>';
-                if (selMode === 1) {
-                    const allSelected = nodes.length > 0 && nodes.every(s => (selection[coordinator_sid] || []).includes(s));
-                    html += '<label class="coordinator-check"><input type="checkbox" ' + (allSelected ? 'checked' : '') + ' onchange="toggleAllNodes(' + coordinator_sid + ',this.checked)"> ALL</label>';
-                }
-                html += '</div>';
+
+            if (selMode === 0) {
+                // ─── INDIVIDUAL MODE ───
+                // 1. Coordinators row
+                html += '<div style="margin-top:6px;margin-bottom:12px">';
+                html += '<div style="font-family:\'Orbitron\',sans-serif;font-size:0.75rem;color:var(--primary);letter-spacing:1.5px;margin-bottom:8px">COORDINATORS</div>';
                 html += '<div class="node-grid">';
-                if (nodes.length === 0) {
-                    html += '<div style="font-size:0.8rem;color:rgba(255,255,255,0.4);padding:5px">No nodes connected yet</div>';
-                } else {
-                    nodes.forEach(node_sid => {
-                        const isSel = (selection[coordinator_sid] || []).includes(node_sid);
-                        const stInfo = (window.nodeStateMap && window.nodeStateMap[node_sid]) || null;
-                        let stIcon = '';
-                        if (stInfo) {
-                            if (stInfo.status === 'ONLINE') stIcon = '<span title="Online (Awake 1 + 32B)" style="color:#00e676;font-size:0.65rem;margin-left:4px">●</span>';
-                            else if (stInfo.status === 'SLEEPING') stIcon = '<span title="Sleeping (Standby 0 + 0B)" style="color:#818cf8;font-size:0.65rem;margin-left:4px">💤</span>';
-                            else if (stInfo.status === 'TRANSITION') stIcon = '<span title="Transition (Handshake 0 + 32B)" style="color:#ffb703;font-size:0.65rem;margin-left:4px">⏳</span>';
-                            else if (stInfo.status === 'LOST') stIcon = '<span title="Lost Signal (Awake 1 + 0B)" style="color:#ff2a5f;font-size:0.65rem;margin-left:4px">⚠️</span>';
-                            if (stInfo.is_busy) stIcon += '<span title="Busy (Manual order active)" style="color:#ff9100;font-size:0.65rem;margin-left:2px">⚙️</span>';
-                        }
-                        html += '<div class="node-chip ' + (isSel ? 'selected' : '') + '" onclick="toggleNode(' + coordinator_sid + ',' + node_sid + ')">E' + node_sid + stIcon + '</div>';
-                    });
-                }
+                coordinators.forEach(cSid => {
+                    const isSel = (selectedCoordinatorSid === cSid);
+                    html += `<div class="coord-chip ${isSel ? 'selected' : ''}" onclick="selectIndividualCoord(${cSid})">C${cSid}</div>`;
+                });
                 html += '</div></div>';
-            });
+
+                // 2. Nodes row for selected coordinator
+                if (selectedCoordinatorSid !== null) {
+                    const nodes = topology[selectedCoordinatorSid] || [];
+                    html += '<div class="coordinator-section fade-in" style="margin-top:6px">';
+                    html += '<div class="coordinator-header">';
+                    html += `<span class="coordinator-label">NODES (COORD ${selectedCoordinatorSid})</span>`;
+                    html += '</div>';
+                    html += '<div class="node-grid">';
+                    if (nodes.length === 0) {
+                        html += `<div style="font-size:0.8rem;color:rgba(255,255,255,0.4);padding:5px">No nodes connected yet to C${selectedCoordinatorSid}</div>`;
+                    } else {
+                        nodes.forEach(nSid => {
+                            const isSel = (selectedNodeSid === nSid);
+                            const key = selectedCoordinatorSid + '_' + nSid;
+                            const stInfo = (window.nodeStateMap && window.nodeStateMap[key]) || null;
+                            let stIcon = '';
+                            if (stInfo) {
+                                if (stInfo.status === 'ONLINE') stIcon = '<span title="Online (Awake 1 + 32B)" style="color:#00e676;font-size:0.65rem;margin-left:4px">●</span>';
+                                else if (stInfo.status === 'SLEEPING') stIcon = '<span title="Sleeping (Standby 0 + 0B)" style="color:#818cf8;font-size:0.65rem;margin-left:4px">💤</span>';
+                                else if (stInfo.status === 'TRANSITION') stIcon = '<span title="Transition (Handshake 0 + 32B)" style="color:#ffb703;font-size:0.65rem;margin-left:4px">⏳</span>';
+                                else if (stInfo.status === 'LOST') stIcon = '<span title="Lost Signal (Awake 1 + 0B)" style="color:#ff2a5f;font-size:0.65rem;margin-left:4px">⚠️</span>';
+                                if (stInfo.is_busy) stIcon += '<span title="Busy (Manual order active)" style="color:#ff9100;font-size:0.65rem;margin-left:2px">⚙️</span>';
+                            }
+                            html += `<div class="node-chip ${isSel ? 'selected' : ''}" onclick="selectIndividualNode(${selectedCoordinatorSid},${nSid})">N${nSid}${stIcon}</div>`;
+                        });
+                    }
+                    html += '</div></div>';
+                } else {
+                    html += '<div style="font-size:0.8rem;color:rgba(255,255,255,0.4);padding:8px 4px;font-style:italic">Select a coordinator (Cx) above to view its nodes.</div>';
+                }
+            } else {
+                // ─── CUSTOM MODE ───
+                // Tree view:
+                // C1
+                // ↳ N1, N2, N3
+                // C2
+                // ↳ N1
+                html += '<div style="margin-top:6px">';
+                coordinators.forEach(cSid => {
+                    const nodes = topology[cSid] || [];
+                    const allSelected = nodes.length > 0 && nodes.every(s => (selection[cSid] || []).includes(s));
+                    html += '<div class="custom-coord-block fade-in">';
+                    html += '<div class="custom-coord-title">';
+                    html += `<span>🏠 C${cSid}</span>`;
+                    html += `<label class="coordinator-check"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleAllNodes(${cSid},this.checked)"> ALL</label>`;
+                    html += '</div>';
+                    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
+                    html += '<span class="custom-tree-arrow">↳ NODES:</span>';
+                    html += '</div>';
+                    html += '<div class="node-grid" style="margin-left:8px">';
+                    if (nodes.length === 0) {
+                        html += '<div style="font-size:0.8rem;color:rgba(255,255,255,0.4);padding:5px">No nodes connected yet</div>';
+                    } else {
+                        nodes.forEach(nSid => {
+                            const isSel = (selection[cSid] || []).includes(nSid);
+                            const key = cSid + '_' + nSid;
+                            const stInfo = (window.nodeStateMap && window.nodeStateMap[key]) || null;
+                            let stIcon = '';
+                            if (stInfo) {
+                                if (stInfo.status === 'ONLINE') stIcon = '<span title="Online (Awake 1 + 32B)" style="color:#00e676;font-size:0.65rem;margin-left:4px">●</span>';
+                                else if (stInfo.status === 'SLEEPING') stIcon = '<span title="Sleeping (Standby 0 + 0B)" style="color:#818cf8;font-size:0.65rem;margin-left:4px">💤</span>';
+                                else if (stInfo.status === 'TRANSITION') stIcon = '<span title="Transition (Handshake 0 + 32B)" style="color:#ffb703;font-size:0.65rem;margin-left:4px">⏳</span>';
+                                else if (stInfo.status === 'LOST') stIcon = '<span title="Lost Signal (Awake 1 + 0B)" style="color:#ff2a5f;font-size:0.65rem;margin-left:4px">⚠️</span>';
+                                if (stInfo.is_busy) stIcon += '<span title="Busy (Manual order active)" style="color:#ff9100;font-size:0.65rem;margin-left:2px">⚙️</span>';
+                            }
+                            html += `<div class="node-chip ${isSel ? 'selected' : ''}" onclick="toggleNodeCustom(${cSid},${nSid})">N${nSid}${stIcon}</div>`;
+                        });
+                    }
+                    html += '</div></div>';
+                });
+                html += '</div>';
+            }
+
             map.innerHTML = html;
             updateSummary();
         }
 
-        // ─── SELECTION ───
-        function toggleNode(coordinator_sid, node_sid) {
-            activeNodeSid = node_sid;
-            if (selMode === 0) {
+        // ─── SELECTION HANDLERS ───
+        function selectIndividualCoord(cSid) {
+            if (selectedCoordinatorSid === cSid) {
+                // Deselect coordinator
+                selectedCoordinatorSid = null;
+                selectedNodeSid = null;
                 selection = {};
-                selection[coordinator_sid] = [node_sid];
+                activeCoordinatorSid = null;
+                activeNodeSid = null;
             } else {
-                if (!selection[coordinator_sid]) selection[coordinator_sid] = [];
-                const idx = selection[coordinator_sid].indexOf(node_sid);
-                if (idx >= 0) {
-                    selection[coordinator_sid].splice(idx, 1);
-                    if (selection[coordinator_sid].length === 0) delete selection[coordinator_sid];
-                } else {
-                    selection[coordinator_sid].push(node_sid);
+                // Select coordinator
+                selectedCoordinatorSid = cSid;
+                selectedNodeSid = null;
+                selection = {};
+                activeCoordinatorSid = cSid;
+                activeNodeSid = null;
+            }
+            renderNetwork();
+            renderChart();
+            if (window.navigator.vibrate) window.navigator.vibrate(10);
+        }
+
+        function selectIndividualNode(cSid, nSid) {
+            const isSel = (selectedNodeSid === nSid && selectedCoordinatorSid === cSid);
+            if (isSel) {
+                // Deselect node
+                selectedNodeSid = null;
+                selection = {};
+                activeNodeSid = null;
+                // keep selectedCoordinatorSid active
+            } else {
+                // Select single node
+                selectedNodeSid = nSid;
+                selection = {};
+                selection[cSid] = [nSid];
+                activeCoordinatorSid = cSid;
+                activeNodeSid = nSid;
+            }
+            renderNetwork();
+            renderChart();
+            if (window.navigator.vibrate) window.navigator.vibrate(10);
+        }
+
+        function toggleNodeCustom(cSid, nSid) {
+            if (!selection[cSid]) selection[cSid] = [];
+            const idx = selection[cSid].indexOf(nSid);
+            if (idx >= 0) {
+                selection[cSid].splice(idx, 1);
+                if (selection[cSid].length === 0) delete selection[cSid];
+                if (activeCoordinatorSid === cSid && activeNodeSid === nSid) {
+                    const remainingCoords = Object.keys(selection);
+                    if (remainingCoords.length > 0) {
+                        activeCoordinatorSid = parseInt(remainingCoords[0]);
+                        activeNodeSid = selection[activeCoordinatorSid][0];
+                    } else {
+                        activeCoordinatorSid = null;
+                        activeNodeSid = null;
+                    }
+                }
+            } else {
+                selection[cSid].push(nSid);
+                activeCoordinatorSid = cSid;
+                activeNodeSid = nSid;
+            }
+            renderNetwork();
+            renderChart();
+            if (window.navigator.vibrate) window.navigator.vibrate(10);
+        }
+
+        function toggleAllNodes(cSid, checked) {
+            if (checked) {
+                selection[cSid] = [...(topology[cSid] || [])];
+                if (selection[cSid].length > 0) {
+                    activeCoordinatorSid = cSid;
+                    activeNodeSid = selection[cSid][0];
+                }
+            } else {
+                delete selection[cSid];
+                if (activeCoordinatorSid === cSid) {
+                    const remainingCoords = Object.keys(selection);
+                    if (remainingCoords.length > 0) {
+                        activeCoordinatorSid = parseInt(remainingCoords[0]);
+                        activeNodeSid = selection[activeCoordinatorSid][0];
+                    } else {
+                        activeCoordinatorSid = null;
+                        activeNodeSid = null;
+                    }
                 }
             }
             renderNetwork();
             renderChart();
-        }
-
-        function toggleAllNodes(coordinator_sid, checked) {
-            if (checked) { selection[coordinator_sid] = [...topology[coordinator_sid]]; }
-            else { delete selection[coordinator_sid]; }
-            renderNetwork();
+            if (window.navigator.vibrate) window.navigator.vibrate(10);
         }
 
         function updateSummary() {
@@ -1182,7 +1357,11 @@
             const coordinator_sids = Object.keys(selection).map(Number).sort();
 
             if (coordinator_sids.length === 0) {
-                el.innerHTML = '<em>Select a target for the command.</em>';
+                if (selMode === 0 && selectedCoordinatorSid !== null) {
+                    el.innerHTML = '<em>Coordinator <strong>C' + selectedCoordinatorSid + '</strong> focused. Select a node to target.</em>';
+                } else {
+                    el.innerHTML = '<em>Select a target for the command.</em>';
+                }
                 btn.disabled = true;
                 btn.textContent = 'SELECT A TARGET';
                 return;
@@ -1196,7 +1375,7 @@
             coordinator_sids.forEach(coordinator_sid => {
                 const node_sids = selection[coordinator_sid];
                 totalSel += node_sids.length;
-                parts.push('<strong>C' + coordinator_sid + '</strong> → E' + node_sids.join(', E'));
+                parts.push('<strong>C' + coordinator_sid + '</strong> → N' + node_sids.join(', N'));
             });
             el.innerHTML = '🎯 ' + parts.join(' | ') + ' (' + totalSel + ' node' + (totalSel > 1 ? 's' : '') + ')';
         }
@@ -1205,9 +1384,14 @@
         function setSelMode(m) {
             selMode = m;
             selection = {};
+            selectedCoordinatorSid = null;
+            selectedNodeSid = null;
+            activeCoordinatorSid = null;
+            activeNodeSid = null;
             document.getElementById('glider-sel').style.transform = m === 0 ? 'translateX(0)' : 'translateX(100%)';
             document.querySelectorAll('#sel-btns .mode-btn').forEach((b, i) => b.classList.toggle('active', i === m));
             renderNetwork();
+            renderChart();
             if (window.navigator.vibrate) window.navigator.vibrate(10);
         }
 
@@ -1526,7 +1710,6 @@
 
         let currentSlide = 0;
         let timeWindowMinutes = 15;
-        let activeNodeSid = null;
 
         function goToSlide(index) {
             currentSlide = (index + PARAMS.length) % PARAMS.length;
@@ -1558,7 +1741,7 @@
             renderChart();
         }
 
-        function updatePowerMetrics(nodeData, coordInaDict) {
+        function updatePowerMetrics(nodeData, coordInaDict, currentCoordSid) {
             // Node INA from selected node's telemetry snapshot
             const nv = nodeData && nodeData.pwr_v;
             const nma = nodeData && nodeData.pwr_ma;
@@ -1567,9 +1750,8 @@
             document.getElementById('nodeCurrent').textContent = (nma !== undefined && nma !== null) ? nma.toFixed(0) + " mA" : "--.- mA";
             document.getElementById('nodePower').textContent = (nmw !== undefined && nmw !== null) ? nmw.toFixed(0) + " mW" : "--.- mW";
 
-            // Coordinator INA from latestCoordIna (independent of node selection)
-            const coordIds = Object.keys(coordInaDict);
-            const cina = coordIds.length > 0 ? coordInaDict[coordIds[0]] : null;
+            // Coordinator INA from latestCoordIna bound to selected coordinator
+            const cina = (currentCoordSid && coordInaDict[currentCoordSid]) ? coordInaDict[currentCoordSid] : null;
             document.getElementById('coordVoltage').textContent = (cina && cina.coord_v !== undefined && cina.coord_v !== null) ? cina.coord_v.toFixed(2) + " V" : "--.- V";
             document.getElementById('coordCurrent').textContent = (cina && cina.coord_ma !== undefined && cina.coord_ma !== null) ? cina.coord_ma.toFixed(0) + " mA" : "--.- mA";
             document.getElementById('coordPower').textContent = (cina && cina.coord_mw !== undefined && cina.coord_mw !== null) ? cina.coord_mw.toFixed(0) + " mW" : "--.- mW";
@@ -1614,13 +1796,27 @@
             const p = PARAMS[currentSlide];
             const chartPolyline = document.getElementById('chartPolyline');
             const chartArea = document.getElementById('chartArea');
+            const targetBadge = document.getElementById('telemetryTargetBadge');
 
             renderThresholdLines(p);
 
-            // For coord_ina_v slide, use latestCoordIna directly
+            // Update telemetry target badge
+            if (targetBadge) {
+                if (activeCoordinatorSid !== null && activeNodeSid !== null) {
+                    targetBadge.textContent = `🎯 TARGET: COORD ${activeCoordinatorSid} - NODE ${activeNodeSid}`;
+                    targetBadge.style.color = 'var(--primary)';
+                } else if (activeCoordinatorSid !== null) {
+                    targetBadge.textContent = `🎯 TARGET: COORD ${activeCoordinatorSid} (SELECT A NODE)`;
+                    targetBadge.style.color = '#ffb703';
+                } else {
+                    targetBadge.textContent = 'TARGET: NONE SELECTED (SELECT COORD & NODE)';
+                    targetBadge.style.color = 'rgba(255,255,255,0.45)';
+                }
+            }
+
+            // For coord_ina_v slide, show selected coordinator INA directly
             if (p.key === 'coord_ina_v') {
-                const coordIds = Object.keys(latestCoordIna);
-                const cina = coordIds.length > 0 ? latestCoordIna[coordIds[0]] : null;
+                const cina = (activeCoordinatorSid && latestCoordIna[activeCoordinatorSid]) ? latestCoordIna[activeCoordinatorSid] : null;
                 if (cina && cina.coord_v !== undefined && cina.coord_v !== null) {
                     document.getElementById('paramValue').textContent = cina.coord_v.toFixed(2) + ' ' + p.unit;
                     const range = (p.max && p.min) ? (p.max - p.min) : 1;
@@ -1631,19 +1827,32 @@
                     chartPolyline.setAttribute('stroke', p.color);
                     chartArea.setAttribute('points', `0,160 0,${y.toFixed(1)} 400,${y.toFixed(1)} 400,160`);
                 } else {
-                    document.getElementById('paramValue').textContent = 'NO DATA';
+                    document.getElementById('paramValue').textContent = activeCoordinatorSid ? 'NO DATA' : 'SELECT COORD';
                     chartPolyline.setAttribute('points', '0,80 400,80');
                     chartPolyline.setAttribute('stroke-dasharray', '4,4');
+                    chartPolyline.setAttribute('stroke', 'rgba(255,255,255,0.2)');
                     chartArea.setAttribute('points', '');
                 }
-                // Always update power metrics card regardless of slide
-                const nodeData = (activeNodeSid && telemetryHistory[activeNodeSid] && telemetryHistory[activeNodeSid].length > 0) ? telemetryHistory[activeNodeSid][telemetryHistory[activeNodeSid].length - 1] : null;
-                updatePowerMetrics(nodeData, latestCoordIna);
+                const key = (activeCoordinatorSid && activeNodeSid) ? (activeCoordinatorSid + '_' + activeNodeSid) : null;
+                const nodeData = (key && telemetryHistory[key] && telemetryHistory[key].length > 0) ? telemetryHistory[key][telemetryHistory[key].length - 1] : null;
+                updatePowerMetrics(nodeData, latestCoordIna, activeCoordinatorSid);
                 return;
             }
 
-            const history = (activeNodeSid && telemetryHistory[activeNodeSid]) ? telemetryHistory[activeNodeSid] : [];
-            const stInfo = (window.nodeStateMap && window.nodeStateMap[activeNodeSid]) || null;
+            // For node sensor parameters: IF NO TARGET SELECTED -> EMPTY STATE (DO NOT SHOW UNSELECTED DATA!)
+            if (activeCoordinatorSid === null || activeNodeSid === null) {
+                document.getElementById('paramValue').textContent = 'SELECT A TARGET';
+                chartPolyline.setAttribute('points', '0,80 400,80');
+                chartPolyline.setAttribute('stroke-dasharray', '4,4');
+                chartPolyline.setAttribute('stroke', 'rgba(255,255,255,0.2)');
+                chartArea.setAttribute('points', '');
+                updatePowerMetrics(null, latestCoordIna, activeCoordinatorSid);
+                return;
+            }
+
+            const key = activeCoordinatorSid + '_' + activeNodeSid;
+            const history = telemetryHistory[key] || [];
+            const stInfo = (window.nodeStateMap && window.nodeStateMap[key]) || null;
             const st = stInfo ? stInfo.status : null;
             const isBusy = stInfo ? stInfo.is_busy : false;
             let statusSuffix = '';
@@ -1656,12 +1865,13 @@
                 document.getElementById('paramValue').textContent = (statusSuffix ? statusSuffix.trim() : 'SLEEPING / INACTIVE');
                 chartPolyline.setAttribute('points', '0,80 400,80');
                 chartPolyline.setAttribute('stroke-dasharray', '4,4');
+                chartPolyline.setAttribute('stroke', 'rgba(255,255,255,0.2)');
                 chartArea.setAttribute('points', '');
-                updatePowerMetrics(null, latestCoordIna);
+                updatePowerMetrics(null, latestCoordIna, activeCoordinatorSid);
                 return;
             }
 
-            // Real data renderer: map actual history entries to SVG 400x160 canvas
+            // Real data renderer: map actual history entries of (coordinator, node) to SVG 400x160 canvas
             chartPolyline.removeAttribute('stroke-dasharray');
             let pointsArr = [];
             const count = history.length;
@@ -1705,7 +1915,7 @@
             }
 
             // Update Power Metrics display from latest real telemetry snapshot
-            updatePowerMetrics(latest, latestCoordIna);
+            updatePowerMetrics(latest, latestCoordIna, activeCoordinatorSid);
         }
 
         // ─── RENDER LIVE COMMAND HISTORY ───
@@ -1880,14 +2090,15 @@
                         if (data.nodes) {
                             for (const [node_sid_str, nodeData] of Object.entries(data.nodes)) {
                                 const nodeSidNum = parseInt(node_sid_str);
-                                const prev = window.nodeStateMap[nodeSidNum];
+                                const key = coordSidNum + '_' + nodeSidNum;
+                                const prev = window.nodeStateMap[key];
                                 const currentStatus = nodeData.status || (nodeData.has_uplink ? "ONLINE" : "SLEEPING");
                                 const currentBusy = !!nodeData.is_busy;
 
                                 if (!prev || prev.status !== currentStatus || prev.is_busy !== currentBusy) {
                                     stateChanged = true;
                                 }
-                                window.nodeStateMap[nodeSidNum] = {
+                                window.nodeStateMap[key] = {
                                     status: currentStatus,
                                     is_busy: currentBusy
                                 };
@@ -1897,16 +2108,13 @@
                                     topoChanged = true;
                                 }
                                 if (nodeData.has_uplink || nodeData.gas_t !== undefined || nodeData.soil_h !== undefined) {
-                                    if (!telemetryHistory[nodeSidNum]) {
-                                        telemetryHistory[nodeSidNum] = [];
+                                    if (!telemetryHistory[key]) {
+                                        telemetryHistory[key] = [];
                                     }
-                                    telemetryHistory[nodeSidNum].push(nodeData);
-                                    if (telemetryHistory[nodeSidNum].length > 30) {
-                                        telemetryHistory[nodeSidNum].shift();
+                                    telemetryHistory[key].push(nodeData);
+                                    if (telemetryHistory[key].length > 30) {
+                                        telemetryHistory[key].shift();
                                     }
-                                }
-                                if (activeNodeSid === null) {
-                                    activeNodeSid = nodeSidNum;
                                 }
                             }
                         }
