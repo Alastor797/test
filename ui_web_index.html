@@ -1132,7 +1132,16 @@
                 } else {
                     nodes.forEach(node_sid => {
                         const isSel = (selection[coordinator_sid] || []).includes(node_sid);
-                        html += '<div class="node-chip ' + (isSel ? 'selected' : '') + '" onclick="toggleNode(' + coordinator_sid + ',' + node_sid + ')">E' + node_sid + '</div>';
+                        const stInfo = (window.nodeStateMap && window.nodeStateMap[node_sid]) || null;
+                        let stIcon = '';
+                        if (stInfo) {
+                            if (stInfo.status === 'ONLINE') stIcon = '<span title="Online (Awake 1 + 32B)" style="color:#00e676;font-size:0.65rem;margin-left:4px">●</span>';
+                            else if (stInfo.status === 'SLEEPING') stIcon = '<span title="Sleeping (Standby 0 + 0B)" style="color:#818cf8;font-size:0.65rem;margin-left:4px">💤</span>';
+                            else if (stInfo.status === 'TRANSITION') stIcon = '<span title="Transition (Handshake 0 + 32B)" style="color:#ffb703;font-size:0.65rem;margin-left:4px">⏳</span>';
+                            else if (stInfo.status === 'LOST') stIcon = '<span title="Lost Signal (Awake 1 + 0B)" style="color:#ff2a5f;font-size:0.65rem;margin-left:4px">⚠️</span>';
+                            if (stInfo.is_busy) stIcon += '<span title="Busy (Manual order active)" style="color:#ff9100;font-size:0.65rem;margin-left:2px">⚙️</span>';
+                        }
+                        html += '<div class="node-chip ' + (isSel ? 'selected' : '') + '" onclick="toggleNode(' + coordinator_sid + ',' + node_sid + ')">E' + node_sid + stIcon + '</div>';
                     });
                 }
                 html += '</div></div>';
@@ -1634,9 +1643,17 @@
             }
 
             const history = (activeNodeSid && telemetryHistory[activeNodeSid]) ? telemetryHistory[activeNodeSid] : [];
+            const stInfo = (window.nodeStateMap && window.nodeStateMap[activeNodeSid]) || null;
+            const st = stInfo ? stInfo.status : null;
+            const isBusy = stInfo ? stInfo.is_busy : false;
+            let statusSuffix = '';
+            if (st === 'SLEEPING') statusSuffix = ' [💤 SLEEPING]';
+            else if (st === 'LOST') statusSuffix = ' [🔴 LOST]';
+            else if (st === 'TRANSITION') statusSuffix = ' [🟡 TRANSITION]';
+            if (isBusy) statusSuffix += ' [⚙️ BUSY]';
 
             if (!history || history.length === 0) {
-                document.getElementById('paramValue').textContent = 'SLEEPING / INACTIVE';
+                document.getElementById('paramValue').textContent = (statusSuffix ? statusSuffix.trim() : 'SLEEPING / INACTIVE');
                 chartPolyline.setAttribute('points', '0,80 400,80');
                 chartPolyline.setAttribute('stroke-dasharray', '4,4');
                 chartArea.setAttribute('points', '');
@@ -1651,7 +1668,8 @@
             const latest = history[count - 1];
             const latestVal = latest[p.key];
 
-            document.getElementById('paramValue').textContent = (latestVal !== undefined && latestVal !== null) ? (typeof latestVal === 'number' ? latestVal.toFixed(1) : latestVal) + ' ' + p.unit : 'NO DATA';
+            const formattedVal = (latestVal !== undefined && latestVal !== null) ? (typeof latestVal === 'number' ? latestVal.toFixed(1) : latestVal) + ' ' + p.unit : 'NO DATA';
+            document.getElementById('paramValue').textContent = formattedVal + statusSuffix;
 
             const range = (p.max && p.min) ? (p.max - p.min) : 100;
             const minBound = p.min !== undefined ? p.min : 0;
@@ -1847,6 +1865,9 @@
                     const cmdHistory = payload.command_history || [];
 
                     let topoChanged = false;
+                    let stateChanged = false;
+                    window.nodeStateMap = window.nodeStateMap || {};
+
                     for (const [coordinator_sid_str, data] of Object.entries(telData)) {
                         const coordSidNum = parseInt(coordinator_sid_str);
                         if (data.coord_ina) {
@@ -1859,16 +1880,30 @@
                         if (data.nodes) {
                             for (const [node_sid_str, nodeData] of Object.entries(data.nodes)) {
                                 const nodeSidNum = parseInt(node_sid_str);
+                                const prev = window.nodeStateMap[nodeSidNum];
+                                const currentStatus = nodeData.status || (nodeData.has_uplink ? "ONLINE" : "SLEEPING");
+                                const currentBusy = !!nodeData.is_busy;
+
+                                if (!prev || prev.status !== currentStatus || prev.is_busy !== currentBusy) {
+                                    stateChanged = true;
+                                }
+                                window.nodeStateMap[nodeSidNum] = {
+                                    status: currentStatus,
+                                    is_busy: currentBusy
+                                };
+
                                 if (!topology[coordSidNum].includes(nodeSidNum)) {
                                     topology[coordSidNum].push(nodeSidNum);
                                     topoChanged = true;
                                 }
-                                if (!telemetryHistory[nodeSidNum]) {
-                                    telemetryHistory[nodeSidNum] = [];
-                                }
-                                telemetryHistory[nodeSidNum].push(nodeData);
-                                if (telemetryHistory[nodeSidNum].length > 30) {
-                                    telemetryHistory[nodeSidNum].shift();
+                                if (nodeData.has_uplink || nodeData.gas_t !== undefined || nodeData.soil_h !== undefined) {
+                                    if (!telemetryHistory[nodeSidNum]) {
+                                        telemetryHistory[nodeSidNum] = [];
+                                    }
+                                    telemetryHistory[nodeSidNum].push(nodeData);
+                                    if (telemetryHistory[nodeSidNum].length > 30) {
+                                        telemetryHistory[nodeSidNum].shift();
+                                    }
                                 }
                                 if (activeNodeSid === null) {
                                     activeNodeSid = nodeSidNum;
@@ -1876,7 +1911,7 @@
                             }
                         }
                     }
-                    if (topoChanged) {
+                    if (topoChanged || stateChanged) {
                         renderNetwork();
                     }
                     renderChart();
