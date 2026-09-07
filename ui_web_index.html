@@ -937,19 +937,23 @@
 
                 <div class="chart-container">
                     <svg id="telemetryChart" viewBox="0 0 400 160" preserveAspectRatio="none">
-                        <g id="thresholdsGroup"></g>
-
-                        <polyline id="chartPolyline" fill="none" stroke="#00f0ff" stroke-width="2.5"
-                            points="0,80 400,80" />
-                        <polygon id="chartArea" fill="url(#chartGradient)" opacity="0.2"
-                            points="0,160 0,80 400,80 400,160" />
-
                         <defs>
                             <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="0%" stop-color="#00f0ff" />
                                 <stop offset="100%" stop-color="#00f0ff" stop-opacity="0" />
                             </linearGradient>
+                            <pattern id="sleepHatch" width="16" height="16" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+                                <line x1="0" y1="0" x2="0" y2="16" stroke="rgba(129, 140, 248, 0.25)" stroke-width="2.5" />
+                            </pattern>
                         </defs>
+                        <g id="thresholdsGroup"></g>
+                        <rect id="sleepShading" x="0" y="0" width="400" height="160" fill="url(#sleepHatch)" opacity="0" style="transition:opacity 0.4s ease;" />
+                        <text id="sleepShadingText" x="200" y="85" text-anchor="middle" fill="#818cf8" font-family="'Orbitron',sans-serif" font-size="11" letter-spacing="2" opacity="0" style="transition:opacity 0.4s ease;">💤 SLEEPING (DEEPSLEEP)</text>
+
+                        <polyline id="chartPolyline" fill="none" stroke="#00f0ff" stroke-width="2.5"
+                            points="0,80 400,80" />
+                        <polygon id="chartArea" fill="url(#chartGradient)" opacity="0.2"
+                            points="0,160 0,80 400,80 400,160" />
                     </svg>
                 </div>
 
@@ -1797,6 +1801,22 @@
             const chartPolyline = document.getElementById('chartPolyline');
             const chartArea = document.getElementById('chartArea');
             const targetBadge = document.getElementById('telemetryTargetBadge');
+            const sleepShading = document.getElementById('sleepShading');
+            const sleepShadingText = document.getElementById('sleepShadingText');
+
+            const setSleepOverlay = (show, isTransition = false) => {
+                if (!sleepShading) return;
+                if (show) {
+                    sleepShading.setAttribute('opacity', isTransition ? '0.35' : '0.65');
+                    if (sleepShadingText) {
+                        sleepShadingText.textContent = isTransition ? '🟡 ENTERING DEEPSLEEP' : '💤 SLEEPING (DEEPSLEEP)';
+                        sleepShadingText.setAttribute('opacity', '0.9');
+                    }
+                } else {
+                    sleepShading.setAttribute('opacity', '0');
+                    if (sleepShadingText) sleepShadingText.setAttribute('opacity', '0');
+                }
+            };
 
             renderThresholdLines(p);
 
@@ -1816,6 +1836,7 @@
 
             // For coord_ina_v slide, show selected coordinator INA directly
             if (p.key === 'coord_ina_v') {
+                setSleepOverlay(false);
                 const cina = (activeCoordinatorSid && latestCoordIna[activeCoordinatorSid]) ? latestCoordIna[activeCoordinatorSid] : null;
                 if (cina && cina.coord_v !== undefined && cina.coord_v !== null) {
                     document.getElementById('paramValue').textContent = cina.coord_v.toFixed(2) + ' ' + p.unit;
@@ -1841,6 +1862,7 @@
 
             // For node sensor parameters: IF NO TARGET SELECTED -> EMPTY STATE (DO NOT SHOW UNSELECTED DATA!)
             if (activeCoordinatorSid === null || activeNodeSid === null) {
+                setSleepOverlay(false);
                 document.getElementById('paramValue').textContent = 'SELECT A TARGET';
                 chartPolyline.setAttribute('points', '0,80 400,80');
                 chartPolyline.setAttribute('stroke-dasharray', '4,4');
@@ -1861,11 +1883,13 @@
             else if (st === 'TRANSITION') statusSuffix = ' [🟡 TRANSITION]';
             if (isBusy) statusSuffix += ' [⚙️ BUSY]';
 
+            setSleepOverlay(st === 'SLEEPING' || st === 'TRANSITION', st === 'TRANSITION');
+
             if (!history || history.length === 0) {
                 document.getElementById('paramValue').textContent = (statusSuffix ? statusSuffix.trim() : 'SLEEPING / INACTIVE');
                 chartPolyline.setAttribute('points', '0,80 400,80');
                 chartPolyline.setAttribute('stroke-dasharray', '4,4');
-                chartPolyline.setAttribute('stroke', 'rgba(255,255,255,0.2)');
+                chartPolyline.setAttribute('stroke', st === 'SLEEPING' ? '#818cf8' : 'rgba(255,255,255,0.2)');
                 chartArea.setAttribute('points', '');
                 updatePowerMetrics(null, latestCoordIna, activeCoordinatorSid);
                 return;
