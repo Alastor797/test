@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=5.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>NET-CORE-CPS | Multi-Coordinator Panel</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link
@@ -30,11 +30,6 @@
             padding: 0
         }
 
-        html {
-            touch-action: pan-x pan-y pinch-zoom;
-            -webkit-text-size-adjust: 100%;
-        }
-
         body {
             background-color: var(--bg);
             background-image: radial-gradient(circle at 15% 20%, rgba(0, 240, 255, 0.08) 0%, transparent 45%), radial-gradient(circle at 85% 80%, rgba(123, 44, 191, 0.08) 0%, transparent 45%);
@@ -43,9 +38,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            min-height: 100vh;
-            width: 100%;
-            touch-action: pan-x pan-y pinch-zoom;
+            min-height: 100vh
         }
 
         .container {
@@ -54,8 +47,7 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
-            align-items: start;
-            min-width: 0;
+            align-items: start
         }
 
         .header,
@@ -126,10 +118,7 @@
             backdrop-filter: blur(12px);
             display: flex;
             flex-direction: column;
-            gap: 15px;
-            min-width: 0;
-            max-width: 100%;
-            overflow: hidden;
+            gap: 15px
         }
 
         .section-title {
@@ -685,38 +674,15 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            margin-top: 6px;
-            width: 100%;
-            max-width: 100%;
-            min-width: 0;
-            overflow: hidden;
-        }
-
-        .time-chips-scroll {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            overflow-x: auto;
-            overflow-y: hidden;
-            white-space: nowrap;
-            padding: 2px 2px 4px 2px;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: none;
-            flex: 1;
-            min-width: 0;
-            max-width: 100%;
-        }
-
-        .time-chips-scroll::-webkit-scrollbar {
-            display: none;
+            justify-content: center;
+            margin-top: 6px
         }
 
         .time-label {
             font-size: 0.7rem;
             letter-spacing: 1px;
             color: rgba(255, 255, 255, 0.4);
-            font-weight: 700;
-            flex-shrink: 0;
+            font-weight: 700
         }
 
         .time-btn {
@@ -728,8 +694,7 @@
             font-size: 0.7rem;
             font-weight: 700;
             cursor: pointer;
-            transition: all .2s;
-            flex-shrink: 0;
+            transition: all .2s
         }
 
         .time-btn.active {
@@ -1001,18 +966,10 @@
 
                 <div class="time-nav-bar">
                     <span class="time-label">WINDOW:</span>
-                    <div class="time-chips-scroll">
-                        <button class="time-btn" onclick="setTimeWindow(5)">5m</button>
-                        <button class="time-btn active" onclick="setTimeWindow(15)">15m</button>
-                        <button class="time-btn" onclick="setTimeWindow(30)">30m</button>
-                        <button class="time-btn" onclick="setTimeWindow(60)">1h</button>
-                        <button class="time-btn" onclick="setTimeWindow(180)">3h</button>
-                        <button class="time-btn" onclick="setTimeWindow(360)">6h</button>
-                        <button class="time-btn" onclick="setTimeWindow(720)">12h</button>
-                        <button class="time-btn" onclick="setTimeWindow(1440)">1d</button>
-                        <button class="time-btn" onclick="setTimeWindow(10080)">1w</button>
-                        <button class="time-btn" onclick="setTimeWindow('all')">ALL</button>
-                    </div>
+                    <button class="time-btn" onclick="setTimeWindow(5)">5m</button>
+                    <button class="time-btn active" onclick="setTimeWindow(15)">15m</button>
+                    <button class="time-btn" onclick="setTimeWindow(60)">1h</button>
+                    <button class="time-btn" onclick="setTimeWindow('all')">ALL</button>
                 </div>
             </div>
 
@@ -1075,7 +1032,6 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
         tg.headerColor = '#050508';
-        try { if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); } catch(e) {}
 
         // ─── GLOBAL STATE ───
         let sysCfg = {};
@@ -1863,13 +1819,7 @@
                 const label = b.textContent.trim();
                 const isMatch = (mins === 5 && label === '5m') || 
                                 (mins === 15 && label === '15m') || 
-                                (mins === 30 && label === '30m') || 
-                                (mins === 60 && label === '1h') || 
-                                (mins === 180 && label === '3h') || 
-                                (mins === 360 && label === '6h') || 
-                                (mins === 720 && label === '12h') || 
-                                (mins === 1440 && label === '1d') || 
-                                (mins === 10080 && label === '1w') || 
+                                (mins === 60 && label === '1h') ||
                                 (mins === 'all' && label === 'ALL');
                 b.classList.toggle('active', isMatch);
             });
@@ -2069,31 +2019,21 @@
             const lblMid = document.getElementById('timeLabelMid');
             if (lblStart && lblMid) {
                 if (timeWindowMinutes === 5) {
-                    lblStart.textContent = "-5m"; lblMid.textContent = "-2.5m";
+                    lblStart.textContent = "-5m";
+                    lblMid.textContent = "-2.5m";
                 } else if (timeWindowMinutes === 15) {
-                    lblStart.textContent = "-15m"; lblMid.textContent = "-7.5m";
-                } else if (timeWindowMinutes === 30) {
-                    lblStart.textContent = "-30m"; lblMid.textContent = "-15m";
+                    lblStart.textContent = "-15m";
+                    lblMid.textContent = "-7.5m";
                 } else if (timeWindowMinutes === 60) {
-                    lblStart.textContent = "-1h"; lblMid.textContent = "-30m";
-                } else if (timeWindowMinutes === 180) {
-                    lblStart.textContent = "-3h"; lblMid.textContent = "-1.5h";
-                } else if (timeWindowMinutes === 360) {
-                    lblStart.textContent = "-6h"; lblMid.textContent = "-3h";
-                } else if (timeWindowMinutes === 720) {
-                    lblStart.textContent = "-12h"; lblMid.textContent = "-6h";
-                } else if (timeWindowMinutes === 1440) {
-                    lblStart.textContent = "-1d"; lblMid.textContent = "-12h";
-                } else if (timeWindowMinutes === 10080) {
-                    lblStart.textContent = "-1w"; lblMid.textContent = "-3.5d";
+                    lblStart.textContent = "-1h";
+                    lblMid.textContent = "-30m";
                 } else if (timeWindowMinutes === 'all') {
                     const totalMins = Math.round(windowMs / 60000);
-                    if (totalMins >= 2880) {
-                        lblStart.textContent = `-${(totalMins / 1440).toFixed(1)}d`;
-                        lblMid.textContent = `-${(totalMins / 2880).toFixed(1)}d`;
-                    } else if (totalMins >= 120) {
-                        lblStart.textContent = `-${(totalMins / 60).toFixed(1)}h`;
-                        lblMid.textContent = `-${(totalMins / 120).toFixed(1)}h`;
+                    if (totalMins >= 120) {
+                        const h = (totalMins / 60).toFixed(1);
+                        const hHalf = (totalMins / 120).toFixed(1);
+                        lblStart.textContent = `-${h}h`;
+                        lblMid.textContent = `-${hHalf}h`;
                     } else {
                         lblStart.textContent = `-${totalMins}m`;
                         lblMid.textContent = `-${Math.round(totalMins / 2)}m`;
