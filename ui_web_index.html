@@ -2391,16 +2391,19 @@
                 return null;
             }
 
+            let consecutiveFailures = window._consecutiveFailures || 0;
+
             for (const cand of candidateList) {
                 try {
                     const ctrl = new AbortController();
-                    const timeoutId = setTimeout(() => ctrl.abort(), 3000);
+                    const timeoutId = setTimeout(() => ctrl.abort(), 6000);
                     const resp = await fetch(cand.url, { signal: ctrl.signal, cache: "no-store" });
                     clearTimeout(timeoutId);
                     if (resp.ok) {
                         const data = await resp.json();
                         totalRxCount++;
                         lastRxTime = Date.now();
+                        window._consecutiveFailures = 0;
                         updateLinkStatusBadge(`🟢 ${cand.name} (Rx #${totalRxCount})`, "#00e676");
                         return data;
                     }
@@ -2409,6 +2412,7 @@
                 }
             }
 
+            window._consecutiveFailures = (window._consecutiveFailures || 0) + 1;
             const timeSinceLast = lastRxTime > 0 ? Math.round((Date.now() - lastRxTime) / 1000) + "s ago" : "NO RX";
             updateLinkStatusBadge(`🔴 RETRYING #${pollAttemptCount} (Last: ${timeSinceLast})`, "#ff5252");
             return null;
@@ -2417,8 +2421,10 @@
         async function runTelemetryPoll() {
             const payload = await fetchTelemetrySnapshot();
             if (!payload) {
-                isLiveConnected = false;
-                renderChart();
+                if ((window._consecutiveFailures || 0) >= 2) {
+                    isLiveConnected = false;
+                    renderChart();
+                }
                 return;
             }
 
@@ -2506,7 +2512,7 @@
 
         if (telemetryApiUrl || telemetryFallbackApiUrl) {
             runTelemetryPoll();
-            setInterval(runTelemetryPoll, 1500);
+            setInterval(runTelemetryPoll, 2500);
         } else {
             isLiveConnected = false;
             renderChart();
