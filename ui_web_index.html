@@ -631,8 +631,11 @@
         .carousel-dots {
             display: flex;
             justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
             gap: 6px;
-            margin: 8px 0 4px 0
+            margin: 8px auto 4px auto;
+            max-width: 92%;
         }
 
         .dot {
@@ -671,15 +674,33 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            justify-content: center;
-            margin-top: 6px
+            margin-top: 6px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .time-chips-scroll {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            overflow-x: auto;
+            white-space: nowrap;
+            padding: 2px 2px 4px 2px;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            flex: 1;
+        }
+
+        .time-chips-scroll::-webkit-scrollbar {
+            display: none;
         }
 
         .time-label {
             font-size: 0.7rem;
             letter-spacing: 1px;
             color: rgba(255, 255, 255, 0.4);
-            font-weight: 700
+            font-weight: 700;
+            flex-shrink: 0;
         }
 
         .time-btn {
@@ -691,7 +712,8 @@
             font-size: 0.7rem;
             font-weight: 700;
             cursor: pointer;
-            transition: all .2s
+            transition: all .2s;
+            flex-shrink: 0;
         }
 
         .time-btn.active {
@@ -927,14 +949,7 @@
                     <button class="nav-arrow" onclick="nextSlide()">›</button>
                 </div>
 
-                <div class="carousel-dots">
-                    <span class="dot active" onclick="goToSlide(0)"></span>
-                    <span class="dot" onclick="goToSlide(1)"></span>
-                    <span class="dot" onclick="goToSlide(2)"></span>
-                    <span class="dot" onclick="goToSlide(3)"></span>
-                    <span class="dot" onclick="goToSlide(4)"></span>
-                    <span class="dot" onclick="goToSlide(5)"></span>
-                </div>
+                <div class="carousel-dots" id="carouselDots"></div>
 
                 <div class="chart-container">
                     <svg id="telemetryChart" viewBox="0 0 400 160" preserveAspectRatio="none">
@@ -951,6 +966,16 @@
                         <rect id="sleepShading" x="0" y="0" width="400" height="160" fill="url(#sleepHatch)" opacity="0" style="transition:opacity 0.4s ease;" />
                         <text id="sleepShadingText" x="200" y="85" text-anchor="middle" fill="#818cf8" font-family="'Orbitron',sans-serif" font-size="11" letter-spacing="2" opacity="0" style="transition:opacity 0.4s ease;">💤 SLEEPING (DEEPSLEEP)</text>
 
+                        <!-- TIME GRIDLINES & AXIS LABELS -->
+                        <g id="timeGridGroup">
+                            <line x1="100" y1="0" x2="100" y2="160" stroke="rgba(255,255,255,0.06)" stroke-dasharray="2,4" />
+                            <line x1="200" y1="0" x2="200" y2="160" stroke="rgba(255,255,255,0.09)" stroke-dasharray="2,4" />
+                            <line x1="300" y1="0" x2="300" y2="160" stroke="rgba(255,255,255,0.06)" stroke-dasharray="2,4" />
+                        </g>
+                        <text id="timeLabelStart" x="8" y="153" fill="rgba(255,255,255,0.35)" font-size="9" font-family="'Orbitron',sans-serif">-15m</text>
+                        <text id="timeLabelMid" x="200" y="153" text-anchor="middle" fill="rgba(255,255,255,0.35)" font-size="9" font-family="'Orbitron',sans-serif">-7.5m</text>
+                        <text id="timeLabelEnd" x="392" y="153" text-anchor="end" fill="rgba(0,240,255,0.7)" font-size="9" font-family="'Orbitron',sans-serif">NOW</text>
+
                         <polyline id="chartPolyline" fill="none" stroke="#00f0ff" stroke-width="2.5"
                             points="0,80 400,80" />
                         <polygon id="chartArea" fill="url(#chartGradient)" opacity="0.2"
@@ -960,9 +985,18 @@
 
                 <div class="time-nav-bar">
                     <span class="time-label">WINDOW:</span>
-                    <button class="time-btn" onclick="setTimeWindow(5)">5m</button>
-                    <button class="time-btn active" onclick="setTimeWindow(15)">15m</button>
-                    <button class="time-btn" onclick="setTimeWindow(60)">1h</button>
+                    <div class="time-chips-scroll">
+                        <button class="time-btn" onclick="setTimeWindow(5)">5m</button>
+                        <button class="time-btn active" onclick="setTimeWindow(15)">15m</button>
+                        <button class="time-btn" onclick="setTimeWindow(30)">30m</button>
+                        <button class="time-btn" onclick="setTimeWindow(60)">1h</button>
+                        <button class="time-btn" onclick="setTimeWindow(180)">3h</button>
+                        <button class="time-btn" onclick="setTimeWindow(360)">6h</button>
+                        <button class="time-btn" onclick="setTimeWindow(720)">12h</button>
+                        <button class="time-btn" onclick="setTimeWindow(1440)">1d</button>
+                        <button class="time-btn" onclick="setTimeWindow(10080)">1w</button>
+                        <button class="time-btn" onclick="setTimeWindow('all')">ALL</button>
+                    </div>
                 </div>
             </div>
 
@@ -1131,6 +1165,7 @@
                                     topology[coordSidNum].push(nodeSidNum);
                                 }
                                 const key = coordSidNum + '_' + nodeSidNum;
+                                nodeData._t = Date.now();
                                 telemetryHistory[key] = [nodeData];
                             }
                         }
@@ -1674,20 +1709,19 @@
                 }
             },
             {
-                key: "soil_h", title: "SOIL HUMIDITY", unit: "%", icon: "💧", color: "#00e676",
-                get min() { return sysCfg.SOIL_HUM_MIN; },
-                get max() { return sysCfg.SOIL_HUM_MAX; },
+                key: "gas_rh", title: "INDOOR AIR HUMIDITY", unit: "%", icon: "💨", color: "#06b6d4",
+                get min() { return 0; },
+                get max() { return 100; },
                 get thresholds() {
                     return [
-                        { val: sysCfg.SOIL_HUM_MAX, label: "FIELD CAP: " + sysCfg.SOIL_HUM_MAX + "%", color: "rgba(0,240,255,0.85)" },
-                        { val: sysCfg.SOIL_HUM_MIN, label: "IRRIG START: " + sysCfg.SOIL_HUM_MIN + "%", color: "rgba(255,183,3,0.85)" }
+                        { val: sysCfg.SAFE_AIR_HUMIDITY, label: "VETO: " + sysCfg.SAFE_AIR_HUMIDITY + "%", color: "rgba(255,42,95,0.85)" }
                     ];
                 }
             },
             {
                 key: "co2", title: "CO2 CONCENTRATION", unit: "ppm", icon: "🌫️", color: "#ffb703",
-                get min() { return sysCfg.CO2_MIN; },
-                get max() { return sysCfg.CO2_MAX; },
+                get min() { return (sysCfg.CO2_MIN !== undefined) ? sysCfg.CO2_MIN - 100 : 300; },
+                get max() { return (sysCfg.CO2_MAX !== undefined) ? sysCfg.CO2_MAX + 300 : 1500; },
                 get thresholds() {
                     return [
                         { val: sysCfg.CO2_MAX, label: "MAX: " + sysCfg.CO2_MAX + " ppm", color: "rgba(255,42,95,0.85)" },
@@ -1700,7 +1734,79 @@
                 }
             },
             {
-                key: "pwr_v", title: "NODE INA219 POWER", unit: "V", icon: "⚡", color: "#7b2cbf",
+                key: "soil_h", title: "SOIL HUMIDITY", unit: "%", icon: "💧", color: "#00e676",
+                get min() { return 0; },
+                get max() { return 100; },
+                get thresholds() {
+                    return [
+                        { val: sysCfg.SOIL_HUM_MAX, label: "FIELD CAP: " + sysCfg.SOIL_HUM_MAX + "%", color: "rgba(0,240,255,0.85)" },
+                        { val: sysCfg.SOIL_HUM_MIN, label: "IRRIG START: " + sysCfg.SOIL_HUM_MIN + "%", color: "rgba(255,183,3,0.85)" }
+                    ];
+                }
+            },
+            {
+                key: "soil_t", title: "SOIL TEMPERATURE", unit: "°C", icon: "🪴", color: "#10b981",
+                get min() { return 0; },
+                get max() { return 45; },
+                get thresholds() {
+                    return [
+                        { val: sysCfg.SAFE_INDOOR_SOIL_TEMP, label: "VETO: " + sysCfg.SAFE_INDOOR_SOIL_TEMP + "°C", color: "rgba(255,42,95,0.85)" }
+                    ];
+                }
+            },
+            {
+                key: "soil_ec", title: "SOIL CONDUCTIVITY (EC)", unit: "µS/cm", icon: "⚡", color: "#a855f7",
+                get min() { return 0; },
+                get max() { return 2000; },
+                get thresholds() {
+                    return [];
+                }
+            },
+            {
+                key: "soil_ph", title: "SOIL pH", unit: "pH", icon: "🧪", color: "#ec4899",
+                get min() { return 4.0; },
+                get max() { return 9.0; },
+                get thresholds() {
+                    return [];
+                }
+            },
+            {
+                key: "pos_gate_motor_1", title: "DAMPER MOTOR 1", unit: "°", icon: "🚪", color: "#f59e0b",
+                get min() { return Math.min(sysCfg.MOTOR_ANGLE_OPEN, sysCfg.MOTOR_ANGLE_CLOSED); },
+                get max() { return Math.max(sysCfg.MOTOR_ANGLE_OPEN, sysCfg.MOTOR_ANGLE_CLOSED); },
+                get thresholds() {
+                    if (sysCfg.MOTOR_ANGLE_CLOSED === undefined || sysCfg.MOTOR_ANGLE_OPEN === undefined) return [];
+                    return [
+                        { val: sysCfg.MOTOR_ANGLE_CLOSED, label: "CLOSED: " + sysCfg.MOTOR_ANGLE_CLOSED + "°", color: "rgba(255,42,95,0.85)" },
+                        { val: sysCfg.MOTOR_ANGLE_OPEN, label: "OPEN: " + sysCfg.MOTOR_ANGLE_OPEN + "°", color: "rgba(0,230,118,0.85)" }
+                    ];
+                }
+            },
+            {
+                key: "pos_gate_motor_2", title: "DAMPER MOTOR 2", unit: "°", icon: "🚪", color: "#eab308",
+                get min() { return Math.min(sysCfg.MOTOR_ANGLE_OPEN, sysCfg.MOTOR_ANGLE_CLOSED); },
+                get max() { return Math.max(sysCfg.MOTOR_ANGLE_OPEN, sysCfg.MOTOR_ANGLE_CLOSED); },
+                get thresholds() {
+                    if (sysCfg.MOTOR_ANGLE_CLOSED === undefined || sysCfg.MOTOR_ANGLE_OPEN === undefined) return [];
+                    return [
+                        { val: sysCfg.MOTOR_ANGLE_CLOSED, label: "CLOSED: " + sysCfg.MOTOR_ANGLE_CLOSED + "°", color: "rgba(255,42,95,0.85)" },
+                        { val: sysCfg.MOTOR_ANGLE_OPEN, label: "OPEN: " + sysCfg.MOTOR_ANGLE_OPEN + "°", color: "rgba(0,230,118,0.85)" }
+                    ];
+                }
+            },
+            {
+                key: "valve_relay_on", title: "IRRIGATION VALVE", unit: "", icon: "🚰", color: "#00e676",
+                get min() { return sysCfg.RELAY_STATE_OFF; },
+                get max() { return sysCfg.RELAY_STATE_ON; },
+                get thresholds() {
+                    if (sysCfg.RELAY_STATE_ON === undefined) return [];
+                    return [
+                        { val: sysCfg.RELAY_STATE_ON, label: "ACTIVE (ON)", color: "rgba(0,230,118,0.85)" }
+                    ];
+                }
+            },
+            {
+                key: "pwr_v", title: "NODE INA219 POWER", unit: "V", icon: "🔋", color: "#7b2cbf",
                 get min() { return sysCfg.INA_VOLT_MIN; },
                 get max() { return sysCfg.INA_VOLT_MAX; },
                 get thresholds() {
@@ -1711,7 +1817,7 @@
                 }
             },
             {
-                key: "coord_ina_v", title: "COORD INA219 POWER", unit: "V", icon: "🔋", color: "#e0aaff",
+                key: "coord_ina_v", title: "COORD INA219 POWER", unit: "V", icon: "📡", color: "#e0aaff",
                 get min() { return sysCfg.INA_VOLT_MIN; },
                 get max() { return sysCfg.INA_VOLT_MAX; },
                 get thresholds() {
@@ -1737,8 +1843,17 @@
         function setTimeWindow(mins) {
             timeWindowMinutes = mins;
             document.querySelectorAll('.time-btn').forEach(b => {
-                const label = b.textContent;
-                const isMatch = (mins === 5 && label === '5m') || (mins === 15 && label === '15m') || (mins === 60 && label === '1h');
+                const label = b.textContent.trim();
+                const isMatch = (mins === 5 && label === '5m') || 
+                                (mins === 15 && label === '15m') || 
+                                (mins === 30 && label === '30m') || 
+                                (mins === 60 && label === '1h') || 
+                                (mins === 180 && label === '3h') || 
+                                (mins === 360 && label === '6h') || 
+                                (mins === 720 && label === '12h') || 
+                                (mins === 1440 && label === '1d') || 
+                                (mins === 10080 && label === '1w') || 
+                                (mins === 'all' && label === 'ALL');
                 b.classList.toggle('active', isMatch);
             });
             renderChart();
@@ -1749,9 +1864,23 @@
             document.getElementById('paramIcon').textContent = p.icon;
             document.getElementById('paramTitle').textContent = p.title;
 
-            document.querySelectorAll('.carousel-dots .dot').forEach((d, i) => {
-                d.classList.toggle('active', i === currentSlide);
-            });
+            const dotsContainer = document.querySelector('.carousel-dots');
+            if (dotsContainer) {
+                if (dotsContainer.children.length !== PARAMS.length) {
+                    dotsContainer.innerHTML = '';
+                    PARAMS.forEach((param, i) => {
+                        const dot = document.createElement('span');
+                        dot.className = 'dot' + (i === currentSlide ? ' active' : '');
+                        dot.onclick = () => goToSlide(i);
+                        dot.title = param.title;
+                        dotsContainer.appendChild(dot);
+                    });
+                } else {
+                    dotsContainer.querySelectorAll('.dot').forEach((d, i) => {
+                        d.classList.toggle('active', i === currentSlide);
+                    });
+                }
+            }
 
             renderChart();
         }
@@ -1884,7 +2013,7 @@
             }
 
             const key = activeCoordinatorSid + '_' + activeNodeSid;
-            const history = telemetryHistory[key] || [];
+            const allHistory = telemetryHistory[key] || [];
             const stInfo = (window.nodeStateMap && window.nodeStateMap[key]) || null;
             const st = stInfo ? stInfo.status : null;
             const isBusy = stInfo ? stInfo.is_busy : false;
@@ -1896,7 +2025,7 @@
 
             setSleepOverlay(st === 'SLEEPING' || st === 'TRANSITION', st === 'TRANSITION');
 
-            if (!history || history.length === 0) {
+            if (!allHistory || allHistory.length === 0) {
                 document.getElementById('paramValue').textContent = (statusSuffix ? statusSuffix.trim() : 'SLEEPING / INACTIVE');
                 chartPolyline.setAttribute('points', '0,80 400,80');
                 chartPolyline.setAttribute('stroke-dasharray', '4,4');
@@ -1906,37 +2035,112 @@
                 return;
             }
 
-            // Real data renderer: map actual history entries of (coordinator, node) to SVG 400x160 canvas
-            chartPolyline.removeAttribute('stroke-dasharray');
-            let pointsArr = [];
-            const count = history.length;
-            const latest = history[count - 1];
-            const latestVal = latest[p.key];
-
-            const formattedVal = (latestVal !== undefined && latestVal !== null) ? (typeof latestVal === 'number' ? latestVal.toFixed(1) : latestVal) + ' ' + p.unit : 'NO DATA';
-            document.getElementById('paramValue').textContent = formattedVal + statusSuffix;
-
-            const range = (p.max && p.min) ? (p.max - p.min) : 100;
-            const minBound = p.min !== undefined ? p.min : 0;
-
-            if (count === 1) {
-                const val = history[0][p.key];
-                if (val !== undefined && val !== null) {
-                    const norm = Math.max(0, Math.min(1, (val - minBound) / range));
-                    const y = 160 - (norm * 100 + 30);
-                    pointsArr.push(`0,${y.toFixed(1)}`);
-                    pointsArr.push(`400,${y.toFixed(1)}`);
-                }
+            // Real data renderer: filter history within active time window (5m, 15m, 1h, ALL)
+            const now = Date.now();
+            let windowMs, windowStart;
+            if (timeWindowMinutes === 'all') {
+                const earliestT = (allHistory.length > 0 && allHistory[0]._t) ? allHistory[0]._t : (now - 60000);
+                windowStart = earliestT;
+                windowMs = Math.max(60000, now - windowStart);
             } else {
-                for (let i = 0; i < count; i++) {
-                    const x = (i / (count - 1)) * 400;
-                    const val = history[i][p.key];
-                    if (val !== undefined && val !== null) {
-                        const norm = Math.max(0, Math.min(1, (val - minBound) / range));
-                        const y = 160 - (norm * 100 + 30);
-                        pointsArr.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+                windowMs = timeWindowMinutes * 60 * 1000;
+                windowStart = now - windowMs;
+            }
+
+            // Update axis labels on SVG based on active window
+            const lblStart = document.getElementById('timeLabelStart');
+            const lblMid = document.getElementById('timeLabelMid');
+            if (lblStart && lblMid) {
+                if (timeWindowMinutes === 5) {
+                    lblStart.textContent = "-5m"; lblMid.textContent = "-2.5m";
+                } else if (timeWindowMinutes === 15) {
+                    lblStart.textContent = "-15m"; lblMid.textContent = "-7.5m";
+                } else if (timeWindowMinutes === 30) {
+                    lblStart.textContent = "-30m"; lblMid.textContent = "-15m";
+                } else if (timeWindowMinutes === 60) {
+                    lblStart.textContent = "-1h"; lblMid.textContent = "-30m";
+                } else if (timeWindowMinutes === 180) {
+                    lblStart.textContent = "-3h"; lblMid.textContent = "-1.5h";
+                } else if (timeWindowMinutes === 360) {
+                    lblStart.textContent = "-6h"; lblMid.textContent = "-3h";
+                } else if (timeWindowMinutes === 720) {
+                    lblStart.textContent = "-12h"; lblMid.textContent = "-6h";
+                } else if (timeWindowMinutes === 1440) {
+                    lblStart.textContent = "-1d"; lblMid.textContent = "-12h";
+                } else if (timeWindowMinutes === 10080) {
+                    lblStart.textContent = "-1w"; lblMid.textContent = "-3.5d";
+                } else if (timeWindowMinutes === 'all') {
+                    const totalMins = Math.round(windowMs / 60000);
+                    if (totalMins >= 2880) {
+                        lblStart.textContent = `-${(totalMins / 1440).toFixed(1)}d`;
+                        lblMid.textContent = `-${(totalMins / 2880).toFixed(1)}d`;
+                    } else if (totalMins >= 120) {
+                        lblStart.textContent = `-${(totalMins / 60).toFixed(1)}h`;
+                        lblMid.textContent = `-${(totalMins / 120).toFixed(1)}h`;
+                    } else {
+                        lblStart.textContent = `-${totalMins}m`;
+                        lblMid.textContent = `-${Math.round(totalMins / 2)}m`;
                     }
                 }
+            }
+
+            let windowHistory = (timeWindowMinutes === 'all') ? allHistory : allHistory.filter(d => (d._t || now) >= windowStart);
+            const priorHistory = (timeWindowMinutes === 'all') ? [] : allHistory.filter(d => (d._t || 0) < windowStart);
+            const anchorBefore = priorHistory.length > 0 ? priorHistory[priorHistory.length - 1] : null;
+
+            chartPolyline.removeAttribute('stroke-dasharray');
+            let pointsArr = [];
+            const latest = allHistory[allHistory.length - 1];
+            const latestVal = latest[p.key];
+
+            let formattedVal = 'NO DATA';
+            if (latestVal !== undefined && latestVal !== null) {
+                if (p.key === 'valve_relay_on') {
+                    const isOn = (latestVal === 1 || latestVal === true || latestVal === '1' || latestVal === 'ON');
+                    formattedVal = isOn ? 'ACTIVE (ON)' : 'CLOSED (OFF)';
+                } else if (p.key === 'pos_gate_motor_1' || p.key === 'pos_gate_motor_2') {
+                    formattedVal = (typeof latestVal === 'number' ? latestVal.toFixed(0) : latestVal) + '°';
+                } else if (p.key === 'soil_ec') {
+                    formattedVal = (typeof latestVal === 'number' ? latestVal.toFixed(0) : latestVal) + ' ' + p.unit;
+                } else if (p.key === 'soil_ph') {
+                    formattedVal = (typeof latestVal === 'number' ? latestVal.toFixed(2) : latestVal) + ' ' + p.unit;
+                } else {
+                    formattedVal = (typeof latestVal === 'number' ? latestVal.toFixed(1) : latestVal) + (p.unit ? (' ' + p.unit) : '');
+                }
+            }
+            document.getElementById('paramValue').textContent = formattedVal + statusSuffix;
+
+            const range = (p.max !== undefined && p.min !== undefined && p.max !== p.min) ? (p.max - p.min) : 100;
+            const minBound = p.min !== undefined ? p.min : 0;
+
+            const calcY = (val) => {
+                const numVal = (typeof val === 'boolean') ? (val ? 1 : 0) : Number(val);
+                const norm = Math.max(0, Math.min(1, (numVal - minBound) / range));
+                return (160 - (norm * 100 + 30)).toFixed(1);
+            };
+
+            // Build time-mapped continuous points:
+            // 1. Left anchor at x = 0 (windowStart): use prior reading or first reading in window
+            if (anchorBefore && anchorBefore[p.key] !== undefined && anchorBefore[p.key] !== null) {
+                pointsArr.push(`0,${calcY(anchorBefore[p.key])}`);
+            } else if (windowHistory.length > 0 && windowHistory[0][p.key] !== undefined && windowHistory[0][p.key] !== null) {
+                pointsArr.push(`0,${calcY(windowHistory[0][p.key])}`);
+            }
+
+            // 2. Real timestamp points within [windowStart, now]
+            for (let i = 0; i < windowHistory.length; i++) {
+                const item = windowHistory[i];
+                const rawVal = item[p.key];
+                if (rawVal !== undefined && rawVal !== null) {
+                    const itemTime = item._t || (windowStart + (i / Math.max(1, windowHistory.length - 1)) * windowMs);
+                    const x = Math.max(0, Math.min(400, ((itemTime - windowStart) / windowMs) * 400));
+                    pointsArr.push(`${x.toFixed(1)},${calcY(rawVal)}`);
+                }
+            }
+
+            // 3. Right anchor at x = 400 (now): project latest reading to the current edge
+            if (latestVal !== undefined && latestVal !== null) {
+                pointsArr.push(`400,${calcY(latestVal)}`);
             }
 
             if (pointsArr.length > 0) {
@@ -2146,12 +2350,32 @@
                                     if (!telemetryHistory[key]) {
                                         telemetryHistory[key] = [];
                                     }
-                                    telemetryHistory[key].push(nodeData);
-                                    if (telemetryHistory[key].length > 30) {
+                                    const stamped = Object.assign({}, nodeData, { _t: Date.now() });
+                                    telemetryHistory[key].push(stamped);
+                                    // Retain up to 24 hours of data for full session graphing
+                                    const cutoff = Date.now() - 24 * 3600 * 1000;
+                                    while (telemetryHistory[key].length > 0 && (telemetryHistory[key][0]._t || 0) < cutoff) {
                                         telemetryHistory[key].shift();
                                     }
                                 }
                             }
+                        }
+                    }
+
+                    // Integrate rolling history buffer if delivered by API
+                    if (payload.history) {
+                        for (const [k, arr] of Object.entries(payload.history)) {
+                            if (!telemetryHistory[k]) telemetryHistory[k] = [];
+                            const existingTs = new Set(telemetryHistory[k].map(x => x._t));
+                            arr.forEach(pt => {
+                                const ptTs = pt._t || Date.now();
+                                if (!existingTs.has(ptTs)) {
+                                    const copy = Object.assign({}, pt, { _t: ptTs });
+                                    telemetryHistory[k].push(copy);
+                                    existingTs.add(ptTs);
+                                }
+                            });
+                            telemetryHistory[k].sort((a, b) => (a._t || 0) - (b._t || 0));
                         }
                     }
                     if (topoChanged || stateChanged) {
