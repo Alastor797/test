@@ -673,7 +673,7 @@
         .time-nav-bar {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             justify-content: center;
             margin-top: 6px
         }
@@ -685,12 +685,44 @@
             font-weight: 700
         }
 
+        .time-arrow-btn {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--glass-border);
+            color: var(--primary);
+            border-radius: 8px;
+            width: 26px;
+            height: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all .2s;
+            user-select: none;
+            padding: 0;
+            line-height: 1
+        }
+
+        .time-arrow-btn:hover:not(:disabled) {
+            background: rgba(0, 240, 255, 0.15);
+            border-color: var(--primary)
+        }
+
+        .time-buttons-window {
+            display: flex;
+            align-items: center;
+            gap: 5px
+        }
+
         .time-btn {
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid var(--glass-border);
             color: rgba(255, 255, 255, 0.5);
             border-radius: 8px;
-            padding: 4px 10px;
+            padding: 4px 8px;
+            min-width: 36px;
+            text-align: center;
             font-size: 0.7rem;
             font-weight: 700;
             cursor: pointer;
@@ -966,10 +998,9 @@
 
                 <div class="time-nav-bar">
                     <span class="time-label">WINDOW:</span>
-                    <button class="time-btn" onclick="setTimeWindow(5)">5m</button>
-                    <button class="time-btn active" onclick="setTimeWindow(15)">15m</button>
-                    <button class="time-btn" onclick="setTimeWindow(60)">1h</button>
-                    <button class="time-btn" onclick="setTimeWindow('all')">ALL</button>
+                    <button class="time-arrow-btn" id="btnTimePrev" onclick="shiftTimeWindow(-1)" title="Earlier windows">‹</button>
+                    <div class="time-buttons-window" id="timeButtonsContainer"></div>
+                    <button class="time-arrow-btn" id="btnTimeNext" onclick="shiftTimeWindow(1)" title="Later windows">›</button>
                 </div>
             </div>
 
@@ -1803,7 +1834,72 @@
         ];
 
         let currentSlide = 0;
+
+        // ─── TIME WINDOW SELECTOR WITH ‹ › ARROW PAGINATION ───
+        const TIME_WINDOWS = [
+            { label: "5m", mins: 5 },
+            { label: "15m", mins: 15 },
+            { label: "30m", mins: 30 },
+            { label: "1h", mins: 60 },
+            { label: "3h", mins: 180 },
+            { label: "6h", mins: 360 },
+            { label: "12h", mins: 720 },
+            { label: "1d", mins: 1440 },
+            { label: "1w", mins: 10080 },
+            { label: "ALL", mins: "all" }
+        ];
+        const VISIBLE_WINDOW_COUNT = 5;
+        let timeWindowOffset = 0;
         let timeWindowMinutes = 15;
+
+        function shiftTimeWindow(delta) {
+            const maxOffset = TIME_WINDOWS.length - VISIBLE_WINDOW_COUNT;
+            timeWindowOffset = Math.max(0, Math.min(maxOffset, timeWindowOffset + delta));
+            renderTimeNavButtons();
+            if (window.navigator.vibrate) window.navigator.vibrate(5);
+        }
+
+        function renderTimeNavButtons() {
+            const container = document.getElementById('timeButtonsContainer');
+            if (!container) return;
+            container.innerHTML = '';
+            const slice = TIME_WINDOWS.slice(timeWindowOffset, timeWindowOffset + VISIBLE_WINDOW_COUNT);
+            slice.forEach(w => {
+                const btn = document.createElement('button');
+                btn.className = 'time-btn' + (timeWindowMinutes === w.mins ? ' active' : '');
+                btn.textContent = w.label;
+                btn.onclick = () => setTimeWindow(w.mins);
+                container.appendChild(btn);
+            });
+            const btnPrev = document.getElementById('btnTimePrev');
+            const btnNext = document.getElementById('btnTimeNext');
+            if (btnPrev) {
+                btnPrev.disabled = (timeWindowOffset <= 0);
+                btnPrev.style.opacity = (timeWindowOffset <= 0) ? "0.2" : "1";
+                btnPrev.style.cursor = (timeWindowOffset <= 0) ? "default" : "pointer";
+            }
+            if (btnNext) {
+                const maxOffset = TIME_WINDOWS.length - VISIBLE_WINDOW_COUNT;
+                btnNext.disabled = (timeWindowOffset >= maxOffset);
+                btnNext.style.opacity = (timeWindowOffset >= maxOffset) ? "0.2" : "1";
+                btnNext.style.cursor = (timeWindowOffset >= maxOffset) ? "default" : "pointer";
+            }
+        }
+
+        function setTimeWindow(mins) {
+            timeWindowMinutes = mins;
+            const selIdx = TIME_WINDOWS.findIndex(w => w.mins === mins);
+            if (selIdx !== -1) {
+                if (selIdx < timeWindowOffset) {
+                    timeWindowOffset = selIdx;
+                } else if (selIdx >= timeWindowOffset + VISIBLE_WINDOW_COUNT) {
+                    timeWindowOffset = selIdx - VISIBLE_WINDOW_COUNT + 1;
+                }
+            }
+            renderTimeNavButtons();
+            renderChart();
+            if (window.navigator.vibrate) window.navigator.vibrate(5);
+        }
 
         function goToSlide(index) {
             currentSlide = (index + PARAMS.length) % PARAMS.length;
@@ -1812,19 +1908,6 @@
 
         function nextSlide() { goToSlide(currentSlide + 1); }
         function prevSlide() { goToSlide(currentSlide - 1); }
-
-        function setTimeWindow(mins) {
-            timeWindowMinutes = mins;
-            document.querySelectorAll('.time-btn').forEach(b => {
-                const label = b.textContent.trim();
-                const isMatch = (mins === 5 && label === '5m') || 
-                                (mins === 15 && label === '15m') || 
-                                (mins === 60 && label === '1h') ||
-                                (mins === 'all' && label === 'ALL');
-                b.classList.toggle('active', isMatch);
-            });
-            renderChart();
-        }
 
         function renderCarousel() {
             const p = PARAMS[currentSlide];
@@ -2019,17 +2102,29 @@
             const lblMid = document.getElementById('timeLabelMid');
             if (lblStart && lblMid) {
                 if (timeWindowMinutes === 5) {
-                    lblStart.textContent = "-5m";
-                    lblMid.textContent = "-2.5m";
+                    lblStart.textContent = "-5m"; lblMid.textContent = "-2.5m";
                 } else if (timeWindowMinutes === 15) {
-                    lblStart.textContent = "-15m";
-                    lblMid.textContent = "-7.5m";
+                    lblStart.textContent = "-15m"; lblMid.textContent = "-7.5m";
+                } else if (timeWindowMinutes === 30) {
+                    lblStart.textContent = "-30m"; lblMid.textContent = "-15m";
                 } else if (timeWindowMinutes === 60) {
-                    lblStart.textContent = "-1h";
-                    lblMid.textContent = "-30m";
+                    lblStart.textContent = "-1h"; lblMid.textContent = "-30m";
+                } else if (timeWindowMinutes === 180) {
+                    lblStart.textContent = "-3h"; lblMid.textContent = "-1.5h";
+                } else if (timeWindowMinutes === 360) {
+                    lblStart.textContent = "-6h"; lblMid.textContent = "-3h";
+                } else if (timeWindowMinutes === 720) {
+                    lblStart.textContent = "-12h"; lblMid.textContent = "-6h";
+                } else if (timeWindowMinutes === 1440) {
+                    lblStart.textContent = "-1d"; lblMid.textContent = "-12h";
+                } else if (timeWindowMinutes === 10080) {
+                    lblStart.textContent = "-1w"; lblMid.textContent = "-3.5d";
                 } else if (timeWindowMinutes === 'all') {
                     const totalMins = Math.round(windowMs / 60000);
-                    if (totalMins >= 120) {
+                    if (totalMins >= 2880) {
+                        lblStart.textContent = `-${(totalMins / 1440).toFixed(1)}d`;
+                        lblMid.textContent = `-${(totalMins / 2880).toFixed(1)}d`;
+                    } else if (totalMins >= 120) {
                         const h = (totalMins / 60).toFixed(1);
                         const hHalf = (totalMins / 120).toFixed(1);
                         lblStart.textContent = `-${h}h`;
@@ -2210,6 +2305,7 @@
         parseTopology();
         renderNetwork();
         highlightPreset(0);
+        renderTimeNavButtons();
         renderCarousel();
 
         // ─── RESILIENT TELEMETRY POLLING WITH DUAL-FAILOVER & LIVE DIAGNOSTICS ───
