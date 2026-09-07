@@ -2077,12 +2077,10 @@
             // CRITICAL: If disconnected or retrying connection, NEVER show ghost/stale data!
             if (!isLiveConnected) {
                 setSleepOverlay(false);
-                const retryTxt = pollAttemptCount > 0 ? `RETRYING #${pollAttemptCount}` : 'DISCONNECTED';
-                const ph = getPlaceholderValue(p);
-                document.getElementById('paramValue').textContent = `${ph} (${retryTxt})`;
+                document.getElementById('paramValue').textContent = getPlaceholderValue(p);
                 chartPolyline.setAttribute('points', '0,80 400,80');
                 chartPolyline.setAttribute('stroke-dasharray', '4,4');
-                chartPolyline.setAttribute('stroke', '#ff5252');
+                chartPolyline.setAttribute('stroke', 'rgba(255,255,255,0.2)');
                 chartArea.setAttribute('points', '');
                 updatePowerMetrics(null, {}, null);
                 return;
@@ -2140,8 +2138,7 @@
             setSleepOverlay(st === 'SLEEPING' || st === 'TRANSITION', st === 'TRANSITION');
 
             if (!allHistory || allHistory.length === 0) {
-                const ph = getPlaceholderValue(p);
-                document.getElementById('paramValue').textContent = `${ph}${statusSuffix || ' [NO DATA]'}`;
+                document.getElementById('paramValue').textContent = `${getPlaceholderValue(p)}${statusSuffix}`;
                 chartPolyline.setAttribute('points', '0,80 400,80');
                 chartPolyline.setAttribute('stroke-dasharray', '4,4');
                 chartPolyline.setAttribute('stroke', st === 'SLEEPING' ? '#818cf8' : 'rgba(255,255,255,0.2)');
