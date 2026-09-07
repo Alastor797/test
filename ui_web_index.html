@@ -933,6 +933,7 @@
                     <span class="dot" onclick="goToSlide(2)"></span>
                     <span class="dot" onclick="goToSlide(3)"></span>
                     <span class="dot" onclick="goToSlide(4)"></span>
+                    <span class="dot" onclick="goToSlide(5)"></span>
                 </div>
 
                 <div class="chart-container">
@@ -1659,6 +1660,16 @@
                         { val: sysCfg.INDOOR_AIR_TEMP_MAX, label: "MAX: " + sysCfg.INDOOR_AIR_TEMP_MAX + "°C", color: "rgba(255,42,95,0.85)" },
                         { val: sysCfg.INDOOR_AIR_TEMP_LOWER, label: "OPTIMAL: " + sysCfg.INDOOR_AIR_TEMP_LOWER + "°C", color: "rgba(255,183,3,0.85)" },
                         { val: sysCfg.INDOOR_AIR_TEMP_MIN, label: "MIN (VETO): " + sysCfg.INDOOR_AIR_TEMP_MIN + "°C", color: "rgba(0,240,255,0.85)" }
+                    ];
+                }
+            },
+            {
+                key: "ds_temp", title: "OUTDOOR AIR TEMP", unit: "°C", icon: "🌤️", color: "#38bdf8",
+                get min() { return 0; },
+                get max() { return 50; },
+                get thresholds() {
+                    return [
+                        { val: sysCfg.SAFE_OUTDOOR_AIR_TEMP, label: "SAFE MIN: " + sysCfg.SAFE_OUTDOOR_AIR_TEMP + "°C", color: "rgba(0,240,255,0.85)" }
                     ];
                 }
             },
