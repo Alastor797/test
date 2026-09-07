@@ -1763,7 +1763,11 @@
                 get min() { return 0; },
                 get max() { return 2000; },
                 get thresholds() {
-                    return [];
+                    if (sysCfg.SOIL_EC_MIN === undefined || sysCfg.SOIL_EC_MAX === undefined) return [];
+                    return [
+                        { val: sysCfg.SOIL_EC_MAX, label: "MAX SALINITY: " + sysCfg.SOIL_EC_MAX + " µS/cm", color: "rgba(255,42,95,0.85)" },
+                        { val: sysCfg.SOIL_EC_MIN, label: "OPTIMAL: " + sysCfg.SOIL_EC_MIN + " µS/cm", color: "rgba(0,230,118,0.85)" }
+                    ];
                 }
             },
             {
@@ -1771,7 +1775,11 @@
                 get min() { return 4.0; },
                 get max() { return 9.0; },
                 get thresholds() {
-                    return [];
+                    if (sysCfg.SOIL_PH_MIN === undefined || sysCfg.SOIL_PH_MAX === undefined) return [];
+                    return [
+                        { val: sysCfg.SOIL_PH_MAX, label: "ALKALINE MAX: " + sysCfg.SOIL_PH_MAX + " pH", color: "rgba(255,42,95,0.85)" },
+                        { val: sysCfg.SOIL_PH_MIN, label: "ACIDIC MIN: " + sysCfg.SOIL_PH_MIN + " pH", color: "rgba(255,183,3,0.85)" }
+                    ];
                 }
             },
             {
@@ -1803,9 +1811,10 @@
                 get min() { return sysCfg.RELAY_STATE_OFF; },
                 get max() { return sysCfg.RELAY_STATE_ON; },
                 get thresholds() {
-                    if (sysCfg.RELAY_STATE_ON === undefined) return [];
+                    if (sysCfg.RELAY_STATE_ON === undefined || sysCfg.RELAY_STATE_OFF === undefined) return [];
                     return [
-                        { val: sysCfg.RELAY_STATE_ON, label: "ACTIVE (ON)", color: "rgba(0,230,118,0.85)" }
+                        { val: sysCfg.RELAY_STATE_ON, label: "ACTIVE (ON)", color: "rgba(0,230,118,0.85)" },
+                        { val: sysCfg.RELAY_STATE_OFF, label: "IDLE (OFF)", color: "rgba(255,255,255,0.4)" }
                     ];
                 }
             },
