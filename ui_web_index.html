@@ -1160,15 +1160,13 @@
         // ─── PARSE TOPOLOGY & CONFIG FROM URL ───
         function parseTopology() {
             const params = new URLSearchParams(window.location.search);
-            const raw = params.get('topo');
-            if (raw) {
-                raw.split(';').forEach(part => {
-                    const [coordinator_sid_str, node_sids_str] = part.split(':');
-                    if (coordinator_sid_str && node_sids_str) {
-                        topology[parseInt(coordinator_sid_str)] = node_sids_str.split(',').map(Number);
-                    }
-                });
-            }
+
+            // Parse live HTTP API URL for 2-second polling with automatic failover
+            const apiRaw = params.get('api');
+            if (apiRaw) telemetryApiUrl = apiRaw;
+            const fbRaw = params.get('api_fb');
+            if (fbRaw) telemetryFallbackApiUrl = fbRaw;
+            activeApiUrl = telemetryApiUrl || telemetryFallbackApiUrl;
 
             const cfgRaw = params.get('cfg');
             if (cfgRaw) {
@@ -1180,27 +1178,41 @@
                 }
             }
 
-            // Discover topology from tel snapshot, but NEVER inject phantom telemetry points or fabricate timestamps!
-            const telRaw = params.get('tel');
-            if (telRaw) {
-                try {
-                    const telSnapshot = JSON.parse(telRaw);
-                    for (const [coordinator_sid_str, data] of Object.entries(telSnapshot)) {
-                        const coordSidNum = parseInt(coordinator_sid_str);
-                        if (!topology[coordSidNum]) {
-                            topology[coordSidNum] = [];
+            // If a live API is configured, do NOT populate topology from stale URL query params.
+            // The live poll will immediately retrieve the true active coordinators and nodes.
+            const hasLiveApi = !!(telemetryApiUrl || telemetryFallbackApiUrl);
+            if (!hasLiveApi) {
+                const raw = params.get('topo');
+                if (raw) {
+                    raw.split(';').forEach(part => {
+                        const [coordinator_sid_str, node_sids_str] = part.split(':');
+                        if (coordinator_sid_str && node_sids_str) {
+                            topology[parseInt(coordinator_sid_str)] = node_sids_str.split(',').map(Number);
                         }
-                        if (data.nodes) {
-                            for (const [node_sid_str, nodeData] of Object.entries(data.nodes)) {
-                                const nodeSidNum = parseInt(node_sid_str);
-                                if (!topology[coordSidNum].includes(nodeSidNum)) {
-                                    topology[coordSidNum].push(nodeSidNum);
+                    });
+                }
+
+                const telRaw = params.get('tel');
+                if (telRaw) {
+                    try {
+                        const telSnapshot = JSON.parse(telRaw);
+                        for (const [coordinator_sid_str, data] of Object.entries(telSnapshot)) {
+                            const coordSidNum = parseInt(coordinator_sid_str);
+                            if (!topology[coordSidNum]) {
+                                topology[coordSidNum] = [];
+                            }
+                            if (data.nodes) {
+                                for (const [node_sid_str, nodeData] of Object.entries(data.nodes)) {
+                                    const nodeSidNum = parseInt(node_sid_str);
+                                    if (!topology[coordSidNum].includes(nodeSidNum)) {
+                                        topology[coordSidNum].push(nodeSidNum);
+                                    }
                                 }
                             }
                         }
+                    } catch (e) {
+                        console.error("Error parsing topology snapshot:", e);
                     }
-                } catch (e) {
-                    console.error("Error parsing topology snapshot:", e);
                 }
             }
 
@@ -1210,13 +1222,6 @@
             activeCoordinatorSid = null;
             activeNodeSid = null;
             selection = {};
-
-            // Parse live HTTP API URL for 2-second polling with automatic failover
-            const apiRaw = params.get('api');
-            if (apiRaw) telemetryApiUrl = apiRaw;
-            const fbRaw = params.get('api_fb');
-            if (fbRaw) telemetryFallbackApiUrl = fbRaw;
-            activeApiUrl = telemetryApiUrl || telemetryFallbackApiUrl;
         }
 
         // ─── RENDER NETWORK MAP ───
@@ -2439,6 +2444,32 @@
                 let stateChanged = false;
                 window.nodeStateMap = window.nodeStateMap || {};
 
+                // ── LIVE TOPOLOGY RECONCILIATION & PURGE OF GHOST/STALE ENTRIES ──
+                // telData from the active backend is the single source of truth.
+                const liveCoordSids = Object.keys(telData).map(Number);
+                
+                // 1. Remove obsolete coordinators that are not present in live telData
+                for (const existingCoordSidStr of Object.keys(topology)) {
+                    const existingCoordSid = Number(existingCoordSidStr);
+                    if (!liveCoordSids.includes(existingCoordSid)) {
+                        delete topology[existingCoordSid];
+                        delete latestCoordIna[existingCoordSid];
+                        if (selectedCoordinatorSid === existingCoordSid) {
+                            selectedCoordinatorSid = null;
+                            selectedNodeSid = null;
+                        }
+                        if (activeCoordinatorSid === existingCoordSid) {
+                            activeCoordinatorSid = null;
+                            activeNodeSid = null;
+                        }
+                        if (selection[existingCoordSid]) {
+                            delete selection[existingCoordSid];
+                        }
+                        topoChanged = true;
+                    }
+                }
+
+                // 2. Reconcile nodes per active coordinator
                 for (const [coordinator_sid_str, data] of Object.entries(telData)) {
                     const coordSidNum = parseInt(coordinator_sid_str);
                     if (data.coord_ina) {
@@ -2448,6 +2479,27 @@
                         topology[coordSidNum] = [];
                         topoChanged = true;
                     }
+
+                    const liveNodeSids = data.nodes ? Object.keys(data.nodes).map(Number) : [];
+                    
+                    // Remove any node from topology that is not in liveNodeSids
+                    const prevNodes = topology[coordSidNum] || [];
+                    const filteredNodes = prevNodes.filter(nSid => liveNodeSids.includes(nSid));
+                    if (filteredNodes.length !== prevNodes.length) {
+                        topology[coordSidNum] = filteredNodes;
+                        topoChanged = true;
+                        if (selectedCoordinatorSid === coordSidNum && !liveNodeSids.includes(selectedNodeSid)) {
+                            selectedNodeSid = null;
+                        }
+                        if (activeCoordinatorSid === coordSidNum && !liveNodeSids.includes(activeNodeSid)) {
+                            activeNodeSid = null;
+                        }
+                        if (selection[coordSidNum]) {
+                            selection[coordSidNum] = selection[coordSidNum].filter(nSid => liveNodeSids.includes(nSid));
+                            if (selection[coordSidNum].length === 0) delete selection[coordSidNum];
+                        }
+                    }
+
                     if (data.nodes) {
                         for (const [node_sid_str, nodeData] of Object.entries(data.nodes)) {
                             const nodeSidNum = parseInt(node_sid_str);
@@ -2468,7 +2520,10 @@
                                 topology[coordSidNum].push(nodeSidNum);
                                 topoChanged = true;
                             }
-                            if (nodeData.has_uplink || nodeData.gas_t !== undefined || nodeData.soil_h !== undefined) {
+                            const hasRealSensors = (nodeData.gas_t !== undefined && nodeData.gas_t !== null) || 
+                                                   (nodeData.soil_h !== undefined && nodeData.soil_h !== null) ||
+                                                   (nodeData.ds_temp !== undefined && nodeData.ds_temp !== null);
+                            if (nodeData.has_uplink && hasRealSensors) {
                                 if (!telemetryHistory[key]) {
                                     telemetryHistory[key] = [];
                                 }
@@ -2482,6 +2537,7 @@
                             }
                         }
                     }
+                    topology[coordSidNum].sort((a, b) => a - b);
                 }
 
                 // Integrate rolling history buffer if delivered by API
