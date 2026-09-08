@@ -1178,41 +1178,50 @@
                 }
             }
 
-            // If a live API is configured, do NOT populate topology from stale URL query params.
-            // The live poll will immediately retrieve the true active coordinators and nodes.
-            const hasLiveApi = !!(telemetryApiUrl || telemetryFallbackApiUrl);
-            if (!hasLiveApi) {
-                const raw = params.get('topo');
-                if (raw) {
-                    raw.split(';').forEach(part => {
-                        const [coordinator_sid_str, node_sids_str] = part.split(':');
-                        if (coordinator_sid_str && node_sids_str) {
-                            topology[parseInt(coordinator_sid_str)] = node_sids_str.split(',').map(Number);
-                        }
-                    });
-                }
+            // Populate topology and telemetry snapshot immediately from URL params for instant 0ms load
+            const raw = params.get('topo');
+            if (raw) {
+                raw.split(';').forEach(part => {
+                    const [coordinator_sid_str, node_sids_str] = part.split(':');
+                    if (coordinator_sid_str && node_sids_str) {
+                        topology[parseInt(coordinator_sid_str)] = node_sids_str.split(',').map(Number);
+                    }
+                });
+            }
 
-                const telRaw = params.get('tel');
-                if (telRaw) {
-                    try {
-                        const telSnapshot = JSON.parse(telRaw);
-                        for (const [coordinator_sid_str, data] of Object.entries(telSnapshot)) {
-                            const coordSidNum = parseInt(coordinator_sid_str);
-                            if (!topology[coordSidNum]) {
-                                topology[coordSidNum] = [];
-                            }
-                            if (data.nodes) {
-                                for (const [node_sid_str, nodeData] of Object.entries(data.nodes)) {
-                                    const nodeSidNum = parseInt(node_sid_str);
-                                    if (!topology[coordSidNum].includes(nodeSidNum)) {
-                                        topology[coordSidNum].push(nodeSidNum);
-                                    }
+            const telRaw = params.get('tel');
+            if (telRaw) {
+                try {
+                    const telSnapshot = JSON.parse(telRaw);
+                    for (const [coordinator_sid_str, data] of Object.entries(telSnapshot)) {
+                        const coordSidNum = parseInt(coordinator_sid_str);
+                        if (data.coord_ina) {
+                            latestCoordIna[coordSidNum] = data.coord_ina;
+                        }
+                        if (!topology[coordSidNum]) {
+                            topology[coordSidNum] = [];
+                        }
+                        if (data.nodes) {
+                            for (const [node_sid_str, nodeData] of Object.entries(data.nodes)) {
+                                const nodeSidNum = parseInt(node_sid_str);
+                                if (!topology[coordSidNum].includes(nodeSidNum)) {
+                                    topology[coordSidNum].push(nodeSidNum);
+                                }
+                                const key = coordSidNum + '_' + nodeSidNum;
+                                window.nodeStateMap = window.nodeStateMap || {};
+                                window.nodeStateMap[key] = {
+                                    status: nodeData.status || "ONLINE",
+                                    is_busy: !!nodeData.is_busy
+                                };
+                                if (nodeData.has_uplink) {
+                                    if (!telemetryHistory[key]) telemetryHistory[key] = [];
+                                    telemetryHistory[key].push(Object.assign({}, nodeData, { _t: Date.now() }));
                                 }
                             }
                         }
-                    } catch (e) {
-                        console.error("Error parsing topology snapshot:", e);
                     }
+                } catch (e) {
+                    console.error("Error parsing topology snapshot:", e);
                 }
             }
 
