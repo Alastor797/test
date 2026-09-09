@@ -2680,9 +2680,8 @@
                 }
 
                 isLiveConnected = true;
-                try {
-                    if (payload.sysCfg) applySysConfig(payload.sysCfg);
-                    else if (payload.config) applySysConfig(payload.config);
+                if (payload.sysCfg) applySysConfig(payload.sysCfg);
+                else if (payload.config) applySysConfig(payload.config);
                     const telData = payload.telemetry || payload;
                     const cmdHistory = payload.command_history || [];
 
