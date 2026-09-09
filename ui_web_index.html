@@ -1114,6 +1114,192 @@
         let lastRxTime = 0;
         let pollAttemptCount = 0;
 
+        // ═══════════════════════════════════════════════════════════════════
+        // ── PURE BINARY PROTOCOL ENGINE (Super-Packet Decoder & CRC) ──────
+        // ═══════════════════════════════════════════════════════════════════
+        function calcCrc16(bytes, length) {
+            let crc = 0xFFFF;
+            for (let i = 0; i < length; i++) {
+                crc ^= bytes[i];
+                for (let j = 0; j < 8; j++) {
+                    if (crc & 0x0001) crc = (crc >>> 1) ^ 0xA001;
+                    else crc = crc >>> 1;
+                }
+            }
+            return crc & 0xFFFF;
+        }
+
+        function calcCrc8(bytes, offset, length) {
+            let crc = 0;
+            for (let i = offset; i < offset + length; i++) {
+                crc ^= bytes[i];
+                for (let j = 0; j < 8; j++) {
+                    if (crc & 0x80) crc = ((crc << 1) ^ 0x07) & 0xFF;
+                    else crc = (crc << 1) & 0xFF;
+                }
+            }
+            return crc;
+        }
+
+        function packBinaryDownlink(coordSid, nodeSid, cmdId, targetValve, targetM1, targetM2, holdDamper, holdValve) {
+            const buf = new Uint8Array(10);
+            buf[0] = (coordSid || 1) & 0xFF;
+            buf[1] = (nodeSid || 1) & 0xFF;
+            buf[2] = (cmdId || 0x02) & 0xFF;
+            buf[3] = (targetValve || 0) & 0xFF;
+            buf[4] = Math.round(targetM1 || 0) & 0xFF;
+            buf[5] = Math.round(targetM2 || 0) & 0xFF;
+            buf[6] = Math.round(holdDamper || 0) & 0xFF;
+            buf[7] = Math.round(holdValve || 0) & 0xFF;
+            buf[8] = 0x00; // padding
+            buf[9] = calcCrc8(buf, 2, 7); // CRC8 over the 7 downlink bytes
+            return buf;
+        }
+
+        function decodeSuperPackets(arrayBuffer) {
+            if (!arrayBuffer || arrayBuffer.byteLength < 23) return null;
+            const view = new DataView(arrayBuffer);
+            const bytes = new Uint8Array(arrayBuffer);
+            const result = {};
+            let offset = 0;
+            const totalLen = arrayBuffer.byteLength;
+            const HEADER_SIZE = 19;
+            const UPLINK_SIZE = 32;
+
+            while (offset + HEADER_SIZE + 4 <= totalLen) {
+                let foundIdx = -1;
+                for (let i = offset; i <= totalLen - HEADER_SIZE - 4; i++) {
+                    if (bytes[i] === 0xAA && bytes[i + 1] === 0x55) {
+                        foundIdx = i;
+                        break;
+                    }
+                }
+                if (foundIdx < 0) break;
+                offset = foundIdx;
+
+                const coordSid = view.getUint8(offset + 6);
+                const coordV = view.getInt16(offset + 7, true) / 100.0;
+                const coordMa = view.getInt16(offset + 9, true) / 10.0;
+                const coordMw = view.getInt16(offset + 11, true) / 10.0;
+                const timestamp = view.getUint32(offset + 13, true);
+                const regCount = view.getUint8(offset + 17);
+                const nodeCount = view.getUint8(offset + 18);
+
+                const maskSize = regCount > 0 ? Math.floor((regCount * 2 + 7) / 8) : 0;
+                const payloadSize = nodeCount * UPLINK_SIZE;
+                const expectedTotal = HEADER_SIZE + maskSize + payloadSize + 2 + 2;
+
+                if (totalLen - offset < expectedTotal) {
+                    break;
+                }
+
+                const endPos = offset + HEADER_SIZE + maskSize + payloadSize;
+                if (bytes[endPos] !== 0x55 || bytes[endPos + 1] !== 0xAA) {
+                    offset += 2;
+                    continue;
+                }
+
+                const calcCrc = calcCrc16(bytes.subarray(offset, endPos + 2), endPos + 2 - offset);
+                const recvCrc = view.getUint16(endPos + 2, true);
+                if (calcCrc !== recvCrc) {
+                    console.warn(`[BIN-CRC] CRC-16 mismatch for Coord ${coordSid}: calc=0x${calcCrc.toString(16)} recv=0x${recvCrc.toString(16)}`);
+                    offset += 2;
+                    continue;
+                }
+
+                const maskOffset = offset + HEADER_SIZE;
+                const nodeStatusMap = {};
+                const nodeBusyMap = {};
+                for (let sid = 1; sid <= regCount; sid++) {
+                    const byteIdx = Math.floor((sid - 1) / 4);
+                    const pos = (sid - 1) % 4;
+                    const maskByte = bytes[maskOffset + byteIdx] || 0;
+                    const isBusy = !!((maskByte >> (pos * 2)) & 1);
+                    const isAwake = !!((maskByte >> (pos * 2 + 1)) & 1);
+                    nodeBusyMap[sid] = isBusy;
+                    nodeStatusMap[sid] = isAwake ? "ONLINE" : "SLEEPING";
+                }
+
+                const uplinksOffset = maskOffset + maskSize;
+                const nodes = {};
+                for (let i = 0; i < nodeCount; i++) {
+                    const uOff = uplinksOffset + i * UPLINK_SIZE;
+                    const calcCrc8Val = calcCrc8(bytes, uOff, 31);
+                    const recvCrc8Val = bytes[uOff + 31];
+                    if (calcCrc8Val !== recvCrc8Val) {
+                        console.warn(`[BIN-CRC] Node uplink CRC-8 error at idx ${i}, skipping node.`);
+                        continue;
+                    }
+
+                    const headerByte = bytes[uOff];
+                    const nodeSid = headerByte & 0x1F;
+                    const sysFlags = (headerByte >> 5) & 0x07;
+                    const seq = bytes[uOff + 1];
+                    const boot = bytes[uOff + 2] === 1 ? "DEEPSLEEP_BOOT" : "COLD_BOOT";
+                    const flags = view.getUint16(uOff + 3, true);
+
+                    const F_SOIL_ALL = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3);
+                    const soilOk = (flags & F_SOIL_ALL) === F_SOIL_ALL;
+                    const tempOk = !!(flags & (1 << 4));
+                    const F_GAS_ALL = (1 << 5) | (1 << 6) | (1 << 7);
+                    const gasOk = (flags & F_GAS_ALL) === F_GAS_ALL;
+                    const F_PWR_ALL = (1 << 8) | (1 << 9) | (1 << 10);
+                    const pwrOk = (flags & F_PWR_ALL) === F_PWR_ALL;
+
+                    const st = view.getInt16(uOff + 5, true);
+                    const sh = view.getUint16(uOff + 7, true);
+                    const ec = view.getUint16(uOff + 9, true);
+                    const ph = view.getUint16(uOff + 11, true);
+                    const tds = view.getInt16(uOff + 13, true);
+                    const co2 = view.getUint16(uOff + 15, true);
+                    const gt = view.getInt16(uOff + 17, true);
+                    const grh = view.getUint16(uOff + 19, true);
+                    const pwV = view.getUint16(uOff + 21, true);
+                    const pwMa = view.getInt16(uOff + 23, true);
+                    const pwMw = view.getUint16(uOff + 25, true);
+                    const pg1 = view.getInt16(uOff + 27, true);
+                    const pg2 = view.getInt16(uOff + 29, true);
+
+                    nodes[nodeSid] = {
+                        status: nodeStatusMap[nodeSid] || "ONLINE",
+                        is_busy: !!nodeBusyMap[nodeSid],
+                        has_uplink: true,
+                        soil_t: soilOk ? (st / 10.0) : null,
+                        soil_h: soilOk ? (sh / 10.0) : null,
+                        soil_ec: soilOk ? ec : null,
+                        soil_ph: soilOk ? (ph / 100.0) : null,
+                        ds_temp: tempOk ? (tds / 100.0) : null,
+                        co2: gasOk ? co2 : null,
+                        gas_t: gasOk ? (gt / 10.0) : null,
+                        gas_rh: gasOk ? (grh / 10.0) : null,
+                        pwr_v: pwrOk ? (pwV / 100.0) : null,
+                        pwr_ma: pwrOk ? pwMa : null,
+                        pwr_mw: pwrOk ? pwMw : null,
+                        pos_gate_motor_1: (pg1 / 100.0),
+                        pos_gate_motor_2: (pg2 / 100.0),
+                        gate_motor_on: !!(flags & (1 << 12)),
+                        valve_relay_on: !!(flags & (1 << 13)),
+                        boot: boot
+                    };
+                }
+
+                result[coordSid] = {
+                    coord_ina: {
+                        coord_v: coordV,
+                        coord_ma: coordMa,
+                        coord_mw: coordMw
+                    },
+                    node_status_map: nodeStatusMap,
+                    node_busy_map: nodeBusyMap,
+                    nodes: nodes
+                };
+
+                offset += expectedTotal;
+            }
+
+            return Object.keys(result).length > 0 ? result : null;
+        }
+
         function applySysConfig(cfg) {
             if (!cfg) return;
             sysCfg = Object.assign(sysCfg, cfg);
@@ -1693,10 +1879,25 @@
             // If active HTTP API endpoint exists, dispatch via direct REST API so panel stays 100% open!
             if (activeApiUrl) {
                 const cmdUrl = activeApiUrl.replace('/telemetry', '/command');
+                const targetCoord = (targets && targets.length > 0) ? (targets[0].coordinator_sid || 1) : (selectedCoordinatorSid || 1);
+                const targetNodes = (targets && targets.length > 0 && targets[0].node_sids) ? targets[0].node_sids : [selectedNodeSid || 1];
+                const targetNode = targetNodes[0] || 1;
+                const cmdId = (s_v > 0 || s_c > 0) ? 0x03 : 0x02; // CMD_SLEEP or CMD_ACTUATORS
+                const binPkt = packBinaryDownlink(
+                    targetCoord,
+                    targetNode,
+                    cmdId,
+                    document.getElementById('vToggle').checked ? rOn : rOff,
+                    clampAngle(document.getElementById('cInput').value),
+                    clampAngle(document.getElementById('cInput').value),
+                    Math.min(255, Math.round(s_c / 60)),
+                    Math.min(255, Math.round(s_v / 60))
+                );
+
                 fetch(cmdUrl, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: payload
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: binPkt
                 }).then(resp => {
                     if (resp.ok) {
                         btn.innerText = "COMMAND SENT ✅";
@@ -2356,10 +2557,12 @@
                 let baseUrl = (activeApiUrl || telemetryApiUrl || telemetryFallbackApiUrl || '');
                 let cmdUrl = baseUrl ? baseUrl.replace(/\/telemetry.*$/, '/command') : '/command';
 
+                // Send binary cancel downlink packet (cmd_id = 0xFE)
+                const cancelPkt = packBinaryDownlink(0, 0, 0xFE, (cmdId || 0) & 0xFF, 0, 0, 0, 0);
                 const response = await fetch(cmdUrl, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'cancel', cmd_id: cmdId })
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: cancelPkt
                 });
 
                 if (window._latestCmdHistory) {
@@ -2413,15 +2616,38 @@
                 try {
                     const ctrl = new AbortController();
                     const timeoutId = setTimeout(() => ctrl.abort(), 12000);
-                    const resp = await fetch(cand.url, { signal: ctrl.signal, cache: "no-store" });
+                    const resp = await fetch(cand.url, { 
+                        signal: ctrl.signal, 
+                        cache: "no-store",
+                        headers: { "Accept": "application/octet-stream, application/json" }
+                    });
                     clearTimeout(timeoutId);
                     if (resp.ok) {
-                        const data = await resp.json();
-                        totalRxCount++;
-                        lastRxTime = Date.now();
-                        window._consecutiveFailures = 0;
-                        updateLinkStatusBadge(`🟢 ${cand.name} (Rx #${totalRxCount})`, "#00e676");
-                        return data;
+                        const contentType = resp.headers.get("Content-Type") || "";
+                        let data = null;
+                        if (contentType.includes("octet-stream")) {
+                            const buf = await resp.arrayBuffer();
+                            data = decodeSuperPackets(buf);
+                        } else {
+                            const text = await resp.text();
+                            try {
+                                const parsed = JSON.parse(text);
+                                data = parsed.telemetry || parsed;
+                            } catch (e) {
+                                const enc = new TextEncoder();
+                                data = decodeSuperPackets(enc.encode(text).buffer);
+                            }
+                        }
+
+                        if (data) {
+                            totalRxCount++;
+                            lastRxTime = Date.now();
+                            window._consecutiveFailures = 0;
+                            updateLinkStatusBadge(`🟢 ${cand.name} (Rx #${totalRxCount} • BIN)`, "#00e676");
+                            return { telemetry: data };
+                        } else {
+                            window._lastPollDiag = `${cand.name} EMPTY / CRC ERR`;
+                        }
                     } else {
                         window._lastPollDiag = `${cand.name} HTTP ${resp.status}`;
                         console.warn(`[API-POLL] ${cand.name} returned HTTP ${resp.status}`);
@@ -2453,148 +2679,148 @@
                     return;
                 }
 
-            isLiveConnected = true;
-            try {
-                if (payload.sysCfg) applySysConfig(payload.sysCfg);
-                else if (payload.config) applySysConfig(payload.config);
-                const telData = payload.telemetry || payload;
-                const cmdHistory = payload.command_history || [];
+                isLiveConnected = true;
+                try {
+                    if (payload.sysCfg) applySysConfig(payload.sysCfg);
+                    else if (payload.config) applySysConfig(payload.config);
+                    const telData = payload.telemetry || payload;
+                    const cmdHistory = payload.command_history || [];
 
-                let topoChanged = false;
-                let stateChanged = false;
-                window.nodeStateMap = window.nodeStateMap || {};
+                    let topoChanged = false;
+                    let stateChanged = false;
+                    window.nodeStateMap = window.nodeStateMap || {};
 
-                // ── LIVE TOPOLOGY RECONCILIATION & PURGE OF GHOST/STALE ENTRIES ──
-                // telData from the active backend is the single source of truth.
-                const liveCoordSids = Object.keys(telData).map(Number);
-                
-                // 1. Remove obsolete coordinators that are not present in live telData
-                for (const existingCoordSidStr of Object.keys(topology)) {
-                    const existingCoordSid = Number(existingCoordSidStr);
-                    if (!liveCoordSids.includes(existingCoordSid)) {
-                        delete topology[existingCoordSid];
-                        delete latestCoordIna[existingCoordSid];
-                        if (selectedCoordinatorSid === existingCoordSid) {
-                            selectedCoordinatorSid = null;
-                            selectedNodeSid = null;
-                        }
-                        if (activeCoordinatorSid === existingCoordSid) {
-                            activeCoordinatorSid = null;
-                            activeNodeSid = null;
-                        }
-                        if (selection[existingCoordSid]) {
-                            delete selection[existingCoordSid];
-                        }
-                        topoChanged = true;
-                    }
-                }
+                    // ── LIVE TOPOLOGY RECONCILIATION & PURGE OF GHOST/STALE ENTRIES ──
+                    // telData from the active backend is the single source of truth.
+                    const liveCoordSids = Object.keys(telData).map(Number);
 
-                // 2. Reconcile nodes per active coordinator
-                for (const [coordinator_sid_str, data] of Object.entries(telData)) {
-                    const coordSidNum = parseInt(coordinator_sid_str);
-                    if (data.coord_ina) {
-                        latestCoordIna[coordSidNum] = data.coord_ina;
-                    }
-                    if (!topology[coordSidNum]) {
-                        topology[coordSidNum] = [];
-                        topoChanged = true;
-                    }
-
-                    const liveNodeSids = data.nodes ? Object.keys(data.nodes).map(Number) : [];
-                    
-                    // Remove any node from topology that is not in liveNodeSids
-                    const prevNodes = topology[coordSidNum] || [];
-                    const filteredNodes = prevNodes.filter(nSid => liveNodeSids.includes(nSid));
-                    if (filteredNodes.length !== prevNodes.length) {
-                        topology[coordSidNum] = filteredNodes;
-                        topoChanged = true;
-                        if (selectedCoordinatorSid === coordSidNum && !liveNodeSids.includes(selectedNodeSid)) {
-                            selectedNodeSid = null;
-                        }
-                        if (activeCoordinatorSid === coordSidNum && !liveNodeSids.includes(activeNodeSid)) {
-                            activeNodeSid = null;
-                        }
-                        if (selection[coordSidNum]) {
-                            selection[coordSidNum] = selection[coordSidNum].filter(nSid => liveNodeSids.includes(nSid));
-                            if (selection[coordSidNum].length === 0) delete selection[coordSidNum];
-                        }
-                    }
-
-                    if (data.nodes) {
-                        for (const [node_sid_str, nodeData] of Object.entries(data.nodes)) {
-                            const nodeSidNum = parseInt(node_sid_str);
-                            const key = coordSidNum + '_' + nodeSidNum;
-                            const prev = window.nodeStateMap[key];
-                            const currentStatus = nodeData.status || (nodeData.has_uplink ? "ONLINE" : "SLEEPING");
-                            const currentBusy = !!nodeData.is_busy;
-
-                            if (!prev || prev.status !== currentStatus || prev.is_busy !== currentBusy) {
-                                stateChanged = true;
+                    // 1. Remove obsolete coordinators that are not present in live telData
+                    for (const existingCoordSidStr of Object.keys(topology)) {
+                        const existingCoordSid = Number(existingCoordSidStr);
+                        if (!liveCoordSids.includes(existingCoordSid)) {
+                            delete topology[existingCoordSid];
+                            delete latestCoordIna[existingCoordSid];
+                            if (selectedCoordinatorSid === existingCoordSid) {
+                                selectedCoordinatorSid = null;
+                                selectedNodeSid = null;
                             }
-                            window.nodeStateMap[key] = {
-                                status: currentStatus,
-                                is_busy: currentBusy
-                            };
-
-                            if (!topology[coordSidNum].includes(nodeSidNum)) {
-                                topology[coordSidNum].push(nodeSidNum);
-                                topoChanged = true;
+                            if (activeCoordinatorSid === existingCoordSid) {
+                                activeCoordinatorSid = null;
+                                activeNodeSid = null;
                             }
-                            const hasRealSensors = (nodeData.gas_t !== undefined && nodeData.gas_t !== null) || 
-                                                   (nodeData.soil_h !== undefined && nodeData.soil_h !== null) ||
-                                                   (nodeData.ds_temp !== undefined && nodeData.ds_temp !== null);
-                            if (nodeData.has_uplink && hasRealSensors) {
-                                if (!telemetryHistory[key]) {
-                                    telemetryHistory[key] = [];
+                            if (selection[existingCoordSid]) {
+                                delete selection[existingCoordSid];
+                            }
+                            topoChanged = true;
+                        }
+                    }
+
+                    // 2. Reconcile nodes per active coordinator
+                    for (const [coordinator_sid_str, data] of Object.entries(telData)) {
+                        const coordSidNum = parseInt(coordinator_sid_str);
+                        if (data.coord_ina) {
+                            latestCoordIna[coordSidNum] = data.coord_ina;
+                        }
+                        if (!topology[coordSidNum]) {
+                            topology[coordSidNum] = [];
+                            topoChanged = true;
+                        }
+
+                        const liveNodeSids = data.nodes ? Object.keys(data.nodes).map(Number) : [];
+
+                        // Remove any node from topology that is not in liveNodeSids
+                        const prevNodes = topology[coordSidNum] || [];
+                        const filteredNodes = prevNodes.filter(nSid => liveNodeSids.includes(nSid));
+                        if (filteredNodes.length !== prevNodes.length) {
+                            topology[coordSidNum] = filteredNodes;
+                            topoChanged = true;
+                            if (selectedCoordinatorSid === coordSidNum && !liveNodeSids.includes(selectedNodeSid)) {
+                                selectedNodeSid = null;
+                            }
+                            if (activeCoordinatorSid === coordSidNum && !liveNodeSids.includes(activeNodeSid)) {
+                                activeNodeSid = null;
+                            }
+                            if (selection[coordSidNum]) {
+                                selection[coordSidNum] = selection[coordSidNum].filter(nSid => liveNodeSids.includes(nSid));
+                                if (selection[coordSidNum].length === 0) delete selection[coordSidNum];
+                            }
+                        }
+
+                        if (data.nodes) {
+                            for (const [node_sid_str, nodeData] of Object.entries(data.nodes)) {
+                                const nodeSidNum = parseInt(node_sid_str);
+                                const key = coordSidNum + '_' + nodeSidNum;
+                                const prev = window.nodeStateMap[key];
+                                const currentStatus = nodeData.status || (nodeData.has_uplink ? "ONLINE" : "SLEEPING");
+                                const currentBusy = !!nodeData.is_busy;
+
+                                if (!prev || prev.status !== currentStatus || prev.is_busy !== currentBusy) {
+                                    stateChanged = true;
                                 }
-                                const stamped = Object.assign({}, nodeData, { _t: Date.now() });
-                                telemetryHistory[key].push(stamped);
-                                // Retain up to 24 hours of data for full session graphing
-                                const cutoff = Date.now() - 24 * 3600 * 1000;
-                                while (telemetryHistory[key].length > 0 && (telemetryHistory[key][0]._t || 0) < cutoff) {
-                                    telemetryHistory[key].shift();
+                                window.nodeStateMap[key] = {
+                                    status: currentStatus,
+                                    is_busy: currentBusy
+                                };
+
+                                if (!topology[coordSidNum].includes(nodeSidNum)) {
+                                    topology[coordSidNum].push(nodeSidNum);
+                                    topoChanged = true;
+                                }
+                                const hasRealSensors = (nodeData.gas_t !== undefined && nodeData.gas_t !== null) ||
+                                    (nodeData.soil_h !== undefined && nodeData.soil_h !== null) ||
+                                    (nodeData.ds_temp !== undefined && nodeData.ds_temp !== null);
+                                if (nodeData.has_uplink && hasRealSensors) {
+                                    if (!telemetryHistory[key]) {
+                                        telemetryHistory[key] = [];
+                                    }
+                                    const stamped = Object.assign({}, nodeData, { _t: Date.now() });
+                                    telemetryHistory[key].push(stamped);
+                                    // Retain up to 24 hours of data for full session graphing
+                                    const cutoff = Date.now() - 24 * 3600 * 1000;
+                                    while (telemetryHistory[key].length > 0 && (telemetryHistory[key][0]._t || 0) < cutoff) {
+                                        telemetryHistory[key].shift();
+                                    }
                                 }
                             }
                         }
+                        topology[coordSidNum].sort((a, b) => a - b);
                     }
-                    topology[coordSidNum].sort((a, b) => a - b);
-                }
 
-                // Integrate rolling history buffer if delivered by API
-                if (payload.history) {
-                    for (const [k, arr] of Object.entries(payload.history)) {
-                        if (!telemetryHistory[k]) telemetryHistory[k] = [];
-                        const existingTs = new Set(telemetryHistory[k].map(x => x._t));
-                        arr.forEach(pt => {
-                            const ptTs = pt._t || Date.now();
-                            if (!existingTs.has(ptTs)) {
-                                const copy = Object.assign({}, pt, { _t: ptTs });
-                                telemetryHistory[k].push(copy);
-                                existingTs.add(ptTs);
-                            }
-                        });
-                        telemetryHistory[k].sort((a, b) => (a._t || 0) - (b._t || 0));
+                    // Integrate rolling history buffer if delivered by API
+                    if (payload.history) {
+                        for (const [k, arr] of Object.entries(payload.history)) {
+                            if (!telemetryHistory[k]) telemetryHistory[k] = [];
+                            const existingTs = new Set(telemetryHistory[k].map(x => x._t));
+                            arr.forEach(pt => {
+                                const ptTs = pt._t || Date.now();
+                                if (!existingTs.has(ptTs)) {
+                                    const copy = Object.assign({}, pt, { _t: ptTs });
+                                    telemetryHistory[k].push(copy);
+                                    existingTs.add(ptTs);
+                                }
+                            });
+                            telemetryHistory[k].sort((a, b) => (a._t || 0) - (b._t || 0));
+                        }
                     }
+                    if (topoChanged || stateChanged) {
+                        renderNetwork();
+                    }
+                    renderChart();
+                    renderCommandHistory(cmdHistory);
+                } catch (err) {
+                    console.error("Error processing telemetry payload:", err);
+                } finally {
+                    isPollingInProgress = false;
                 }
-                if (topoChanged || stateChanged) {
-                    renderNetwork();
-                }
-                renderChart();
-                renderCommandHistory(cmdHistory);
-            } catch (err) {
-                console.error("Error processing telemetry payload:", err);
-            } finally {
-                isPollingInProgress = false;
             }
-        }
 
         if (telemetryApiUrl || telemetryFallbackApiUrl) {
-            runTelemetryPoll();
-            setInterval(runTelemetryPoll, 2500);
-        } else {
-            isLiveConnected = false;
-            renderChart();
-        }
+                runTelemetryPoll();
+                setInterval(runTelemetryPoll, 2500);
+            } else {
+                isLiveConnected = false;
+                renderChart();
+            }
     </script>
 </body>
 
