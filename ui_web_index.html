@@ -1259,7 +1259,8 @@
                 html += '<div class="node-grid">';
                 coordinators.forEach(cSid => {
                     const isSel = (selectedCoordinatorSid === cSid);
-                    html += `<div class="coord-chip ${isSel ? 'selected' : ''}" onclick="selectIndividualCoord(${cSid})">C${cSid}</div>`;
+                    const cDot = '<span title="Coordinator Online" style="color:#00e676;font-size:0.65rem;margin-left:4px">●</span>';
+                    html += `<div class="coord-chip ${isSel ? 'selected' : ''}" onclick="selectIndividualCoord(${cSid})">C${cSid}${cDot}</div>`;
                 });
                 html += '</div></div>';
 
@@ -1304,9 +1305,10 @@
                 coordinators.forEach(cSid => {
                     const nodes = topology[cSid] || [];
                     const allSelected = nodes.length > 0 && nodes.every(s => (selection[cSid] || []).includes(s));
+                    const cDot = '<span title="Coordinator Online" style="color:#00e676;font-size:0.65rem;margin-left:4px">●</span>';
                     html += '<div class="custom-coord-block fade-in">';
                     html += '<div class="custom-coord-title">';
-                    html += `<span>🏠 C${cSid}</span>`;
+                    html += `<span>🏠 C${cSid}${cDot}</span>`;
                     html += `<label class="coordinator-check"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleAllNodes(${cSid},this.checked)"> ALL</label>`;
                     html += '</div>';
                     html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
@@ -2393,6 +2395,8 @@
             }
         }
 
+        let isPollingInProgress = false;
+
         async function fetchTelemetrySnapshot() {
             pollAttemptCount++;
             const candidateList = [];
@@ -2405,12 +2409,10 @@
                 return null;
             }
 
-            let consecutiveFailures = window._consecutiveFailures || 0;
-
             for (const cand of candidateList) {
                 try {
                     const ctrl = new AbortController();
-                    const timeoutId = setTimeout(() => ctrl.abort(), 6000);
+                    const timeoutId = setTimeout(() => ctrl.abort(), 12000);
                     const resp = await fetch(cand.url, { signal: ctrl.signal, cache: "no-store" });
                     clearTimeout(timeoutId);
                     if (resp.ok) {
@@ -2420,27 +2422,36 @@
                         window._consecutiveFailures = 0;
                         updateLinkStatusBadge(`🟢 ${cand.name} (Rx #${totalRxCount})`, "#00e676");
                         return data;
+                    } else {
+                        window._lastPollDiag = `${cand.name} HTTP ${resp.status}`;
+                        console.warn(`[API-POLL] ${cand.name} returned HTTP ${resp.status}`);
                     }
                 } catch (e) {
-                    // Try next candidate
+                    const isAbort = (e.name === 'AbortError');
+                    window._lastPollDiag = isAbort ? `${cand.name} TIMEOUT (>12s)` : `${cand.name} ${e.message || 'NET ERR'}`;
+                    console.warn(`[API-POLL] ${cand.name} error:`, e);
                 }
             }
 
             window._consecutiveFailures = (window._consecutiveFailures || 0) + 1;
             const timeSinceLast = lastRxTime > 0 ? Math.round((Date.now() - lastRxTime) / 1000) + "s ago" : "NO RX";
-            updateLinkStatusBadge(`🔴 RETRYING #${pollAttemptCount} (Last: ${timeSinceLast})`, "#ff5252");
+            const diagInfo = window._lastPollDiag ? ` [${window._lastPollDiag}]` : '';
+            updateLinkStatusBadge(`🔴 RETRYING #${pollAttemptCount}${diagInfo}`, "#ff5252");
             return null;
         }
 
         async function runTelemetryPoll() {
-            const payload = await fetchTelemetrySnapshot();
-            if (!payload) {
-                if ((window._consecutiveFailures || 0) >= 2) {
-                    isLiveConnected = false;
-                    renderChart();
+            if (isPollingInProgress) return;
+            isPollingInProgress = true;
+            try {
+                const payload = await fetchTelemetrySnapshot();
+                if (!payload) {
+                    if ((window._consecutiveFailures || 0) >= 2) {
+                        isLiveConnected = false;
+                        renderChart();
+                    }
+                    return;
                 }
-                return;
-            }
 
             isLiveConnected = true;
             try {
@@ -2572,6 +2583,8 @@
                 renderCommandHistory(cmdHistory);
             } catch (err) {
                 console.error("Error processing telemetry payload:", err);
+            } finally {
+                isPollingInProgress = false;
             }
         }
 
