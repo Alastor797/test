@@ -2625,28 +2625,43 @@
                     if (resp.ok) {
                         const contentType = resp.headers.get("Content-Type") || "";
                         let data = null;
+                        let isEmpty = false;
                         if (contentType.includes("octet-stream")) {
                             const buf = await resp.arrayBuffer();
-                            data = decodeSuperPackets(buf);
+                            if (buf.byteLength === 0) {
+                                isEmpty = true;
+                                data = {};
+                            } else {
+                                data = decodeSuperPackets(buf);
+                            }
                         } else {
                             const text = await resp.text();
-                            try {
-                                const parsed = JSON.parse(text);
-                                data = parsed.telemetry || parsed;
-                            } catch (e) {
-                                const enc = new TextEncoder();
-                                data = decodeSuperPackets(enc.encode(text).buffer);
+                            if (!text || text.trim() === "" || text.trim() === "{}") {
+                                isEmpty = true;
+                                data = {};
+                            } else {
+                                try {
+                                    const parsed = JSON.parse(text);
+                                    data = parsed.telemetry || parsed;
+                                } catch (e) {
+                                    const enc = new TextEncoder();
+                                    data = decodeSuperPackets(enc.encode(text).buffer);
+                                }
                             }
                         }
 
-                        if (data) {
+                        if (data !== null) {
                             totalRxCount++;
                             lastRxTime = Date.now();
                             window._consecutiveFailures = 0;
-                            updateLinkStatusBadge(`🟢 ${cand.name} (Rx #${totalRxCount} • BIN)`, "#00e676");
+                            if (isEmpty) {
+                                updateLinkStatusBadge(`🟢 ${cand.name} (Waiting for data...)`, "#00e676");
+                            } else {
+                                updateLinkStatusBadge(`🟢 ${cand.name} (Rx #${totalRxCount} • BIN)`, "#00e676");
+                            }
                             return { telemetry: data };
                         } else {
-                            window._lastPollDiag = `${cand.name} EMPTY / CRC ERR`;
+                            window._lastPollDiag = `${cand.name} CRC ERR`;
                         }
                     } else {
                         window._lastPollDiag = `${cand.name} HTTP ${resp.status}`;
