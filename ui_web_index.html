@@ -2605,11 +2605,21 @@
                 let icon = '⏳';
                 let canCancel = false;
 
-                if (item.status === 'SUCCESS') {
+                if (item.status === 'SUCCESS' || item.status === 'COMPLETED') {
                     badgeClass = 'rgba(0,230,118,0.15)';
                     borderColor = 'rgba(0,230,118,0.4)';
                     textColor = '#00e676';
                     icon = '✅';
+                } else if (item.status === 'EXECUTING') {
+                    badgeClass = 'rgba(0,240,255,0.15)';
+                    borderColor = 'rgba(0,240,255,0.4)';
+                    textColor = '#00f0ff';
+                    icon = '⚙️';
+                } else if (item.status === 'DELIVERED') {
+                    badgeClass = 'rgba(255,183,3,0.15)';
+                    borderColor = 'rgba(255,183,3,0.4)';
+                    textColor = '#ffb703';
+                    icon = '📥';
                 } else if (item.status === 'FAILED') {
                     badgeClass = 'rgba(255,42,95,0.15)';
                     borderColor = 'rgba(255,42,95,0.4)';
