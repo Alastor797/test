@@ -1911,6 +1911,20 @@
             btn.innerText = "TRANSMITTING...";
             btn.style.opacity = "0.6";
 
+            // Optimistically display dispatched order immediately in Live Command History
+            const targetDescs = targets.map(t => `C${t.coordinator_sid}→[${t.node_sids.map(s => 'N' + s).join(',')}]`).join('; ');
+            const detailsDesc = `Cmd:0x${cmdId.toString(16).toUpperCase().padStart(2, '0')} | M1:${m1Angle}° M2:${m2Angle}° Valve:${valveVal ? 'ON' : 'OFF'} Hold:${holdD}m/${holdV}m`;
+            const optCmd = {
+                id: `TX-${Date.now().toString().slice(-4)}`,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                targets: targetDescs,
+                details: detailsDesc,
+                status: 'TRANSMITTING',
+                status_label: 'TRANSMITTING 📡'
+            };
+            window._latestCmdHistory = [optCmd, ...(window._latestCmdHistory || [])].slice(0, 10);
+            renderCommandHistory(window._latestCmdHistory);
+
             // Dispatch directed command in pure binary via REST API (application/octet-stream)
             let baseUrl = (activeApiUrl || telemetryApiUrl || telemetryFallbackApiUrl || '');
             if (baseUrl && binBuffer.length > 0) {
@@ -2514,6 +2528,8 @@
             const container = document.getElementById('commandHistoryLog');
             if (!container) return;
 
+            window._latestCmdHistory = history || [];
+
             if (!history || history.length === 0) {
                 container.innerHTML = `<div style="text-align:center;padding:15px;color:rgba(255,255,255,0.3);font-size:0.8rem"><em>No commands transmitted yet.</em></div>`;
                 return;
@@ -2524,6 +2540,7 @@
                 let badgeClass = 'rgba(255,183,3,0.15)';
                 let borderColor = 'rgba(255,183,3,0.4)';
                 let textColor = '#ffb703';
+                let icon = '⏳';
                 let canCancel = false;
 
                 if (item.status === 'SUCCESS') {
@@ -2544,6 +2561,7 @@
                 } else {
                     // Pending, WAITING, or TRANSMITTING -> allow user cancellation
                     canCancel = true;
+                    icon = '📡';
                 }
 
                 const cancelBtnHtml = canCancel ?
@@ -2552,14 +2570,14 @@
                 html += `
                 <div style="background:rgba(255,255,255,0.02);border:1px solid ${borderColor};border-radius:12px;padding:8px 12px;display:flex;flex-direction:column;gap:4px">
                     <div style="display:flex;justify-content:space-between;align-items:center">
-                        <span style="font-family:'Orbitron';font-size:0.75rem;font-weight:700;color:var(--primary)">${item.id} <span style="font-size:0.65rem;color:rgba(255,255,255,0.4)">(${item.timestamp})</span></span>
+                        <span style="font-family:'Orbitron';font-size:0.75rem;font-weight:700;color:var(--primary)">${item.id} <span style="font-size:0.65rem;color:rgba(255,255,255,0.4)">(${item.timestamp || ''})</span></span>
                         <div style="display:flex;align-items:center;gap:6px">
-                            <span style="background:${badgeClass};border:1px solid ${borderColor};color:${textColor};padding:2px 8px;border-radius:10px;font-size:0.68rem;font-weight:700;letter-spacing:0.5px">${icon} ${item.status_label}</span>
+                            <span style="background:${badgeClass};border:1px solid ${borderColor};color:${textColor};padding:2px 8px;border-radius:10px;font-size:0.68rem;font-weight:700;letter-spacing:0.5px">${icon} ${item.status_label || item.status || 'SENT'}</span>
                             ${cancelBtnHtml}
                         </div>
                     </div>
-                    <div style="font-size:0.72rem;color:rgba(255,255,255,0.7)">🎯 <strong>Targets:</strong> ${item.targets}</div>
-                    <div style="font-size:0.7rem;color:rgba(255,255,255,0.45)">⚙️ ${item.details}</div>
+                    <div style="font-size:0.72rem;color:rgba(255,255,255,0.7)">🎯 <strong>Targets:</strong> ${item.targets || 'All'}</div>
+                    <div style="font-size:0.7rem;color:rgba(255,255,255,0.45)">⚙️ ${item.details || ''}</div>
                 </div>`;
             });
 
