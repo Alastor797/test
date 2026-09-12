@@ -814,6 +814,17 @@
                 INITIALIZING...</div>
         </div>
 
+        <!-- TUNNEL / ENDPOINT LIVE MONITOR -->
+        <div id="tunnelDisplayCard" style="display:flex;flex-direction:column;gap:5px;background:rgba(10,14,24,0.92);border:1px solid rgba(0,240,255,0.3);border-radius:12px;padding:9px 14px;margin-bottom:15px;box-shadow:0 4px 18px rgba(0,0,0,0.6);">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.72rem;letter-spacing:1px;font-weight:700;color:var(--primary);">
+                <span>🌐 ACTIVE TUNNEL / ENDPOINT</span>
+                <span id="tunnelStatusBadge" style="font-size:0.68rem;padding:2px 7px;border-radius:6px;background:rgba(0,240,255,0.12);color:var(--accent);border:1px solid rgba(0,240,255,0.2);">PARSING...</span>
+            </div>
+            <div id="activeTunnelUrl" style="font-family:'Consolas','Courier New',monospace;font-size:0.75rem;color:#00f0ff;word-break:break-all;line-height:1.35;cursor:pointer;user-select:all;" title="Tap to copy URL" onclick="copyTunnelUrl()">
+                Detecting endpoint from URL params...
+            </div>
+        </div>
+
         <!-- LEFT COLUMN: CONTROLS & COMMANDS -->
         <div class="left-col" style="display:flex;flex-direction:column;gap:20px">
             <!-- SECTION 1: SELECTION MODE -->
@@ -1353,6 +1364,9 @@
             const fbRaw = params.get('api_fb');
             if (fbRaw) telemetryFallbackApiUrl = fbRaw;
             activeApiUrl = telemetryApiUrl || telemetryFallbackApiUrl;
+            if (typeof updateTunnelDisplay === 'function') {
+                updateTunnelDisplay(activeApiUrl, telemetryApiUrl ? "CLOUDFLARE READY" : (telemetryFallbackApiUrl ? "LOCAL LAN READY" : "STANDALONE"));
+            }
 
             const cfgRaw = params.get('cfg');
             if (cfgRaw) {
@@ -2596,6 +2610,39 @@
         renderCarousel();
 
         // ─── RESILIENT TELEMETRY POLLING WITH DUAL-FAILOVER & LIVE DIAGNOSTICS ───
+        function updateTunnelDisplay(currentUrl, statusLabel, colorHex) {
+            const urlEl = document.getElementById('activeTunnelUrl');
+            const badgeEl = document.getElementById('tunnelStatusBadge');
+            const targetUrl = currentUrl || activeApiUrl || telemetryApiUrl || '(No endpoint in URL parameters)';
+            if (urlEl) {
+                urlEl.textContent = targetUrl;
+            }
+            if (badgeEl && statusLabel) {
+                badgeEl.textContent = statusLabel;
+                if (colorHex) {
+                    badgeEl.style.color = colorHex;
+                    badgeEl.style.borderColor = colorHex;
+                }
+            }
+        }
+
+        function copyTunnelUrl() {
+            const urlEl = document.getElementById('activeTunnelUrl');
+            if (!urlEl || !urlEl.textContent) return;
+            const text = urlEl.textContent.trim();
+            if (!text || text.startsWith('(') || text.startsWith('Detecting')) return;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(() => {
+                    const badge = document.getElementById('tunnelStatusBadge');
+                    if (badge) {
+                        const oldText = badge.textContent;
+                        badge.textContent = 'COPIED! 📋';
+                        setTimeout(() => { badge.textContent = oldText; }, 1500);
+                    }
+                }).catch(() => {});
+            }
+        }
+
         function updateLinkStatusBadge(statusText, colorHex) {
             const badge = document.getElementById('statConnection');
             if (badge) {
@@ -2615,10 +2662,12 @@
 
             if (candidateList.length === 0) {
                 updateLinkStatusBadge("⚠️ NO API CONFIGURED", "#ffb703");
+                updateTunnelDisplay(null, "NO URL CONFIGURED", "#ffb703");
                 return null;
             }
 
             for (const cand of candidateList) {
+                updateTunnelDisplay(cand.url, `TRYING ${cand.name}...`, "#ffb703");
                 try {
                     const ctrl = new AbortController();
                     const timeoutId = setTimeout(() => ctrl.abort(), 12000);
@@ -2631,6 +2680,8 @@
                     if (resp.ok) {
                         const contentType = resp.headers.get("Content-Type") || "";
                         let cmdHist = [];
+                        let data = null;
+                        let isEmpty = false;
                         if (contentType.includes("octet-stream")) {
                             const buf = await resp.arrayBuffer();
                             if (buf.byteLength === 0) {
@@ -2660,6 +2711,7 @@
                             totalRxCount++;
                             lastRxTime = Date.now();
                             window._consecutiveFailures = 0;
+                            updateTunnelDisplay(cand.url, `🟢 ${cand.name} (CONNECTED)`, "#00e676");
                             if (isEmpty) {
                                 updateLinkStatusBadge(`🟢 ${cand.name} (Waiting for data...)`, "#00e676");
                             } else {
@@ -2684,6 +2736,7 @@
             const timeSinceLast = lastRxTime > 0 ? Math.round((Date.now() - lastRxTime) / 1000) + "s ago" : "NO RX";
             const diagInfo = window._lastPollDiag ? ` [${window._lastPollDiag}]` : '';
             updateLinkStatusBadge(`🔴 RETRYING #${pollAttemptCount}${diagInfo}`, "#ff5252");
+            updateTunnelDisplay(activeApiUrl || telemetryApiUrl || telemetryFallbackApiUrl, `🔴 FAIL #${pollAttemptCount}`, "#ff5252");
             return null;
         }
 
