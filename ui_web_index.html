@@ -2666,8 +2666,11 @@
                 return null;
             }
 
+            const diags = [];
             for (const cand of candidateList) {
-                updateTunnelDisplay(cand.url, `TRYING ${cand.name}...`, "#ffb703");
+                if (!isLiveConnected) {
+                    updateTunnelDisplay(cand.url, `CONNECTING ${cand.name}...`, "#ffb703");
+                }
                 try {
                     const ctrl = new AbortController();
                     const timeoutId = setTimeout(() => ctrl.abort(), 12000);
@@ -2719,18 +2722,20 @@
                             }
                             return { telemetry: data, command_history: cmdHist };
                         } else {
-                            window._lastPollDiag = `${cand.name} CRC ERR`;
+                            diags.push(`${cand.name} CRC ERR`);
                         }
                     } else {
-                        window._lastPollDiag = `${cand.name} HTTP ${resp.status}`;
+                        diags.push(`${cand.name} HTTP ${resp.status}`);
                         console.warn(`[API-POLL] ${cand.name} returned HTTP ${resp.status}`);
                     }
                 } catch (e) {
                     const isAbort = (e.name === 'AbortError');
-                    window._lastPollDiag = isAbort ? `${cand.name} TIMEOUT (>12s)` : `${cand.name} ${e.message || 'NET ERR'}`;
+                    diags.push(isAbort ? `${cand.name} TIMEOUT (>12s)` : `${cand.name} ${e.message || 'NET ERR'}`);
                     console.warn(`[API-POLL] ${cand.name} error:`, e);
                 }
             }
+
+            window._lastPollDiag = diags.join(' • ');
 
             window._consecutiveFailures = (window._consecutiveFailures || 0) + 1;
             const timeSinceLast = lastRxTime > 0 ? Math.round((Date.now() - lastRxTime) / 1000) + "s ago" : "NO RX";
