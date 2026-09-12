@@ -945,8 +945,8 @@
                 <div class="section-title">DEEPSLEEP MANAGEMENT</div>
                 <div class="mode-selector" id="ds-btns">
                     <div id="glider-ds" class="glider"></div>
-                    <button class="mode-btn active" onclick="setSleepMode(0)">NORMAL</button>
-                    <button class="mode-btn" onclick="setSleepMode(1)">CUSTOM</button>
+                    <button class="mode-btn active" onclick="setSleepMode(0)">AUTOMATIC</button>
+                    <button class="mode-btn" onclick="setSleepMode(1)">MANUAL</button>
                 </div>
                 <div id="sleepSec" class="dynamic-section" style="flex-direction:column;gap:15px">
                     <div>
@@ -1152,7 +1152,7 @@
             return crc;
         }
 
-        function packBinaryDownlink(coordinator_sid, node_sid, cmdId, targetValve, targetM1, targetM2, holdDamper, holdValve) {
+        function packBinaryDownlink(coordinator_sid, node_sid, cmdId, targetValve, targetM1, targetM2, holdDamper, holdValve, sysFlags) {
             const buf = new Uint8Array(10);
             buf[0] = Number(coordinator_sid) & 0xFF;
             buf[1] = Number(node_sid) & 0xFF;
@@ -1162,8 +1162,8 @@
             buf[5] = Math.round(targetM2 || 0) & 0xFF;
             buf[6] = Math.round(holdDamper || 0) & 0xFF;
             buf[7] = Math.round(holdValve || 0) & 0xFF;
-            buf[8] = 0x00; // padding
-            buf[9] = calcCrc8(buf, 2, 7); // CRC8 over the 7 downlink bytes
+            buf[8] = Number(sysFlags || 0) & 0xFF; // sys_flags (Bit 0: MANUAL CONTROL, Bit 1: FORCE_SLEEP, Bit 2: UPDATE_SLEEP_SP)
+            buf[9] = calcCrc8(buf, 2, 7); // CRC8 over the 7 downlink bytes (cmdId to sysFlags)
             return buf;
         }
 
@@ -1652,9 +1652,6 @@
                 return;
             }
 
-            btn.disabled = false;
-            btn.textContent = 'SEND COMMAND';
-
             let parts = [];
             let totalSel = 0;
             coordinator_sids.forEach(coordinator_sid => {
@@ -1662,6 +1659,22 @@
                 totalSel += node_sids.length;
                 parts.push('<strong>C' + coordinator_sid + '</strong> → N' + node_sids.join(', N'));
             });
+
+            // If both Operational Control and DeepSleep are in AUTOMATIC, keep button disabled
+            if (modeControl === 0 && modeSleep === 0) {
+                btn.disabled = true;
+                btn.textContent = 'SELECT MANUAL MODE';
+                el.innerHTML = '🎯 ' + parts.join(' | ') + ' (' + totalSel + ' node' + (totalSel > 1 ? 's' : '') + ') — <em style="color:rgba(255,255,255,0.4)">System in Automatic mode.</em>';
+                return;
+            }
+
+            btn.disabled = false;
+            let modeSuffix = "";
+            if (modeControl === 1 && modeSleep === 1) modeSuffix = " (MANUAL ACT + SLEEP)";
+            else if (modeControl === 1) modeSuffix = " (MANUAL ACTUATORS)";
+            else if (modeSleep === 1) modeSuffix = " (MANUAL SLEEP)";
+
+            btn.textContent = 'SEND COMMAND' + modeSuffix;
             el.innerHTML = '🎯 ' + parts.join(' | ') + ' (' + totalSel + ' node' + (totalSel > 1 ? 's' : '') + ')';
         }
 
@@ -1677,6 +1690,7 @@
             document.querySelectorAll('#sel-btns .mode-btn').forEach((b, i) => b.classList.toggle('active', i === m));
             renderNetwork();
             renderChart();
+            updateSummary();
             if (window.navigator.vibrate) window.navigator.vibrate(10);
         }
 
@@ -1687,6 +1701,7 @@
             const sec = document.getElementById('actuatorsSec');
             if (m === 1) { sec.style.display = 'block'; setTimeout(() => sec.style.opacity = 1, 10); }
             else { sec.style.opacity = 0; setTimeout(() => sec.style.display = 'none', 300); }
+            updateSummary();
             if (window.navigator.vibrate) window.navigator.vibrate(10);
         }
 
@@ -1697,6 +1712,7 @@
             const sec = document.getElementById('sleepSec');
             if (m === 1) { sec.style.display = 'flex'; setTimeout(() => sec.style.opacity = 1, 10); }
             else { sec.style.opacity = 0; setTimeout(() => sec.style.display = 'none', 300); }
+            updateSummary();
             if (window.navigator.vibrate) window.navigator.vibrate(10);
         }
 
@@ -1843,6 +1859,11 @@
 
         // ─── SEND COMMAND ───
         function apply() {
+            // Guard: If both Operational Control and DeepSleep are in AUTOMATIC, button is disabled; reject invocation
+            if (modeControl === 0 && modeSleep === 0) {
+                return;
+            }
+
             let flags = 0;
             if (modeControl === 1) flags |= (1 << 0);
             if (modeSleep === 1) {
@@ -1874,23 +1895,39 @@
             const rOn = sysCfg.RELAY_STATE_ON !== undefined ? sysCfg.RELAY_STATE_ON : 1;
             const rOff = sysCfg.RELAY_STATE_OFF !== undefined ? sysCfg.RELAY_STATE_OFF : 0;
 
-            const data = {
-                flags: flags,
-                target_valve_relay: document.getElementById('vToggle').checked ? rOn : rOff,
-                target_gate_motor_1: clampAngle(document.getElementById('cInput').value),
-                target_gate_motor_2: clampAngle(document.getElementById('cInput').value),
-                sleep_valve: s_v,
-                sleep_damper: s_c,
-                targets: targets
-            };
-
-            // ─── PURE BINARY DOWNLINK BUFFER (10 Bytes per target node) ───
-            const cmdId = (s_v > 0 || s_c > 0) ? 0x03 : 0x02; // CMD_SLEEP or CMD_ACTUATORS
             const valveVal = document.getElementById('vToggle').checked ? rOn : rOff;
             const m1Angle = clampAngle(document.getElementById('cInput').value);
-            const m2Angle = clampAngle(document.getElementById('cInput').value);
-            const holdD = Math.min(255, Math.round(s_c / 60));
-            const holdV = Math.min(255, Math.round(s_v / 60));
+            const m2Angle = m1Angle;
+
+            let holdD = Math.min(255, Math.round(s_c / 60));
+            let holdV = Math.min(255, Math.round(s_v / 60));
+
+            let cmdId = 0x00;
+            if (modeControl === 1) {
+                cmdId = 0x02; // CMD_ACTUATORS
+            } else if (modeSleep === 1) {
+                cmdId = 0x03; // CMD_SLEEP
+                holdD = s_ds & 0xFF;
+                holdV = (s_ds >> 8) & 0xFF;
+            } else {
+                cmdId = 0x00; // CMD_NOP (Autonomous)
+            }
+
+            const isForce = (modeSleep === 1 && document.getElementById('forceCheck').checked);
+            const data = {
+                flags: flags,
+                mode_control: modeControl === 1 ? "MANUAL" : "AUTOMATIC",
+                mode_sleep: modeSleep === 1 ? "MANUAL" : "AUTOMATIC",
+                target_valve_relay: valveVal,
+                target_gate_motor_1: m1Angle,
+                target_gate_motor_2: m2Angle,
+                sleep_valve: s_v,
+                sleep_damper: s_c,
+                sleep_sec: s_ds,
+                sleep_minutes: modeSleep === 1 ? sleepMinutes : null,
+                force_sleep: isForce,
+                targets: targets
+            };
 
             let totalTargetsCount = 0;
             targets.forEach(t => { totalTargetsCount += t.node_sids.length; });
@@ -1900,7 +1937,7 @@
             targets.forEach(t => {
                 const coordinator_sid = t.coordinator_sid;
                 t.node_sids.forEach(node_sid => {
-                    const pkt = packBinaryDownlink(coordinator_sid, node_sid, cmdId, valveVal, m1Angle, m2Angle, holdD, holdV);
+                    const pkt = packBinaryDownlink(coordinator_sid, node_sid, cmdId, valveVal, m1Angle, m2Angle, holdD, holdV, flags);
                     binBuffer.set(pkt, binOffset);
                     binOffset += 10;
                 });
@@ -1913,9 +1950,17 @@
 
             // Optimistically display dispatched order immediately in Live Command History
             const targetDescs = targets.map(t => `C${t.coordinator_sid}→[${t.node_sids.map(s => 'N' + s).join(',')}]`).join('; ');
-            const detailsDesc = `Cmd:0x${cmdId.toString(16).toUpperCase().padStart(2, '0')} | M1:${m1Angle}° M2:${m2Angle}° Valve:${valveVal ? 'ON' : 'OFF'} Hold:${holdD}m/${holdV}m`;
+            const actDesc = (modeControl === 1)
+                ? `M1:${m1Angle}° M2:${m2Angle}° Valve:${valveVal ? 'ON' : 'OFF'} Hold:${holdD}m/${holdV}m`
+                : `Actuators:-`;
+            const dsDesc = (modeSleep === 1)
+                ? `DeepSleep:${sleepMinutes}m Force:${isForce ? 'ON' : 'OFF'}`
+                : `DeepSleep:- Force:-`;
+            const detailsDesc = `Cmd:0x${cmdId.toString(16).toUpperCase().padStart(2, '0')} | ${actDesc} | ${dsDesc}`;
+
             const optCmd = {
                 id: `TX-${Date.now().toString().slice(-4)}`,
+                _created: Date.now(),
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                 targets: targetDescs,
                 details: detailsDesc,
@@ -1937,13 +1982,13 @@
                     if (resp.ok) {
                         btn.innerText = "COMMAND SENT ✅";
                         setTimeout(() => {
-                            btn.innerText = "SEND COMMAND";
+                            updateSummary();
                             btn.style.opacity = "1";
                         }, 1600);
                     } else {
                         btn.innerText = "DISPATCH FAILED ⚠️";
                         setTimeout(() => {
-                            btn.innerText = "SEND COMMAND";
+                            updateSummary();
                             btn.style.opacity = "1";
                         }, 2000);
                     }
@@ -1951,7 +1996,7 @@
                     try { tg.sendData(payload); } catch (e) { }
                     btn.innerText = "COMMAND SENT ✅";
                     setTimeout(() => {
-                        btn.innerText = "SEND COMMAND";
+                        updateSummary();
                         btn.style.opacity = "1";
                     }, 1600);
                 });
@@ -1959,7 +2004,7 @@
                 try { tg.sendData(payload); } catch (e) { }
                 btn.innerText = "COMMAND SENT ✅";
                 setTimeout(() => {
-                    btn.innerText = "SEND COMMAND";
+                    updateSummary();
                     btn.style.opacity = "1";
                 }, 1600);
             }
@@ -2524,11 +2569,28 @@
         }
 
         // ─── RENDER LIVE COMMAND HISTORY ───
-        function renderCommandHistory(history) {
+        function renderCommandHistory(serverHistory) {
             const container = document.getElementById('commandHistoryLog');
             if (!container) return;
 
-            window._latestCmdHistory = history || [];
+            let history = (serverHistory && serverHistory.length > 0) ? [...serverHistory] : [];
+
+            // Merge recent optimistic cards (< 20s) if they haven't been confirmed yet
+            if (window._latestCmdHistory && window._latestCmdHistory.length > 0) {
+                const now = Date.now();
+                const pendingOpt = window._latestCmdHistory.filter(x =>
+                    x.id && x.id.startsWith('TX-') &&
+                    (now - (x._created || now)) < 20000 &&
+                    !history.some(h => h.id === x.id)
+                );
+                if (history.length > 0) {
+                    history = [...pendingOpt, ...history].slice(0, 10);
+                } else if (pendingOpt.length > 0) {
+                    history = pendingOpt;
+                }
+            }
+
+            window._latestCmdHistory = history;
 
             if (!history || history.length === 0) {
                 container.innerHTML = `<div style="text-align:center;padding:15px;color:rgba(255,255,255,0.3);font-size:0.8rem"><em>No commands transmitted yet.</em></div>`;
@@ -2701,6 +2763,10 @@
                     if (resp.ok) {
                         const contentType = resp.headers.get("Content-Type") || "";
                         let cmdHist = [];
+                        const xCmdHeader = resp.headers.get("X-Command-History");
+                        if (xCmdHeader) {
+                            try { cmdHist = JSON.parse(xCmdHeader); } catch (e) { }
+                        }
                         let data = null;
                         let isEmpty = false;
                         if (contentType.includes("octet-stream")) {
@@ -2720,7 +2786,7 @@
                                 try {
                                     const parsed = JSON.parse(text);
                                     data = parsed.telemetry || parsed;
-                                    if (parsed.command_history) cmdHist = parsed.command_history;
+                                    if (parsed.command_history && (!cmdHist || cmdHist.length === 0)) cmdHist = parsed.command_history;
                                 } catch (e) {
                                     const enc = new TextEncoder();
                                     data = decodeSuperPackets(enc.encode(text).buffer);
@@ -2879,7 +2945,9 @@
                                 }
                             }
                         }
-                        topology[coordSidNum].sort((a, b) => a - b);
+                        if (topology[coordinator_sid]) {
+                            topology[coordinator_sid].sort((a, b) => a - b);
+                        }
                     }
 
                     // Integrate rolling history buffer if delivered by API
