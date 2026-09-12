@@ -1141,12 +1141,12 @@
             return crc;
         }
 
-        function packBinaryDownlink(coordSid, nodeSid, cmdId, targetValve, targetM1, targetM2, holdDamper, holdValve) {
+        function packBinaryDownlink(coordinator_sid, node_sid, cmdId, targetValve, targetM1, targetM2, holdDamper, holdValve) {
             const buf = new Uint8Array(10);
-            buf[0] = (coordSid || 1) & 0xFF;
-            buf[1] = (nodeSid || 1) & 0xFF;
-            buf[2] = (cmdId || 0x02) & 0xFF;
-            buf[3] = (targetValve || 0) & 0xFF;
+            buf[0] = Number(coordinator_sid) & 0xFF;
+            buf[1] = Number(node_sid) & 0xFF;
+            buf[2] = Number(cmdId || 0x02) & 0xFF;
+            buf[3] = Number(targetValve || 0) & 0xFF;
             buf[4] = Math.round(targetM1 || 0) & 0xFF;
             buf[5] = Math.round(targetM2 || 0) & 0xFF;
             buf[6] = Math.round(holdDamper || 0) & 0xFF;
@@ -1443,10 +1443,10 @@
                 html += '<div style="margin-top:6px;margin-bottom:12px">';
                 html += '<div style="font-family:\'Orbitron\',sans-serif;font-size:0.75rem;color:var(--primary);letter-spacing:1.5px;margin-bottom:8px">COORDINATORS</div>';
                 html += '<div class="node-grid">';
-                coordinators.forEach(cSid => {
-                    const isSel = (selectedCoordinatorSid === cSid);
+                coordinators.forEach(coordinator_sid => {
+                    const isSel = (selectedCoordinatorSid === coordinator_sid);
                     const cDot = '<span title="Coordinator Online" style="color:#00e676;font-size:0.65rem;margin-left:4px">●</span>';
-                    html += `<div class="coord-chip ${isSel ? 'selected' : ''}" onclick="selectIndividualCoord(${cSid})">C${cSid}${cDot}</div>`;
+                    html += `<div class="coord-chip ${isSel ? 'selected' : ''}" onclick="selectIndividualCoord(${coordinator_sid})">C${coordinator_sid}${cDot}</div>`;
                 });
                 html += '</div></div>';
 
@@ -1461,9 +1461,9 @@
                     if (nodes.length === 0) {
                         html += `<div style="font-size:0.8rem;color:rgba(255,255,255,0.4);padding:5px">No nodes connected yet to C${selectedCoordinatorSid}</div>`;
                     } else {
-                        nodes.forEach(nSid => {
-                            const isSel = (selectedNodeSid === nSid);
-                            const key = selectedCoordinatorSid + '_' + nSid;
+                        nodes.forEach(node_sid => {
+                            const isSel = (selectedNodeSid === node_sid);
+                            const key = selectedCoordinatorSid + '_' + node_sid;
                             const stInfo = (window.nodeStateMap && window.nodeStateMap[key]) || null;
                             let stIcon = '';
                             if (stInfo) {
@@ -1473,7 +1473,7 @@
                                 else if (stInfo.status === 'LOST') stIcon = '<span title="Lost Signal (Awake 1 + 0B)" style="color:#ff2a5f;font-size:0.65rem;margin-left:4px">⚠️</span>';
                                 if (stInfo.is_busy) stIcon += '<span title="Busy (Manual order active)" style="color:#ff9100;font-size:0.65rem;margin-left:2px">⚙️</span>';
                             }
-                            html += `<div class="node-chip ${isSel ? 'selected' : ''}" onclick="selectIndividualNode(${selectedCoordinatorSid},${nSid})">N${nSid}${stIcon}</div>`;
+                            html += `<div class="node-chip ${isSel ? 'selected' : ''}" onclick="selectIndividualNode(${selectedCoordinatorSid},${node_sid})">N${node_sid}${stIcon}</div>`;
                         });
                     }
                     html += '</div></div>';
@@ -1488,14 +1488,14 @@
                 // C2
                 // ↳ N1
                 html += '<div style="margin-top:6px">';
-                coordinators.forEach(cSid => {
-                    const nodes = topology[cSid] || [];
-                    const allSelected = nodes.length > 0 && nodes.every(s => (selection[cSid] || []).includes(s));
+                coordinators.forEach(coordinator_sid => {
+                    const nodes = topology[coordinator_sid] || [];
+                    const allSelected = nodes.length > 0 && nodes.every(s => (selection[coordinator_sid] || []).includes(s));
                     const cDot = '<span title="Coordinator Online" style="color:#00e676;font-size:0.65rem;margin-left:4px">●</span>';
                     html += '<div class="custom-coord-block fade-in">';
                     html += '<div class="custom-coord-title">';
-                    html += `<span>🏠 C${cSid}${cDot}</span>`;
-                    html += `<label class="coordinator-check"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleAllNodes(${cSid},this.checked)"> ALL</label>`;
+                    html += `<span>🏠 C${coordinator_sid}${cDot}</span>`;
+                    html += `<label class="coordinator-check"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleAllNodes(${coordinator_sid},this.checked)"> ALL</label>`;
                     html += '</div>';
                     html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
                     html += '<span class="custom-tree-arrow">↳ NODES:</span>';
@@ -1504,9 +1504,9 @@
                     if (nodes.length === 0) {
                         html += '<div style="font-size:0.8rem;color:rgba(255,255,255,0.4);padding:5px">No nodes connected yet</div>';
                     } else {
-                        nodes.forEach(nSid => {
-                            const isSel = (selection[cSid] || []).includes(nSid);
-                            const key = cSid + '_' + nSid;
+                        nodes.forEach(node_sid => {
+                            const isSel = (selection[coordinator_sid] || []).includes(node_sid);
+                            const key = coordinator_sid + '_' + node_sid;
                             const stInfo = (window.nodeStateMap && window.nodeStateMap[key]) || null;
                             let stIcon = '';
                             if (stInfo) {
@@ -1516,7 +1516,7 @@
                                 else if (stInfo.status === 'LOST') stIcon = '<span title="Lost Signal (Awake 1 + 0B)" style="color:#ff2a5f;font-size:0.65rem;margin-left:4px">⚠️</span>';
                                 if (stInfo.is_busy) stIcon += '<span title="Busy (Manual order active)" style="color:#ff9100;font-size:0.65rem;margin-left:2px">⚙️</span>';
                             }
-                            html += `<div class="node-chip ${isSel ? 'selected' : ''}" onclick="toggleNodeCustom(${cSid},${nSid})">N${nSid}${stIcon}</div>`;
+                            html += `<div class="node-chip ${isSel ? 'selected' : ''}" onclick="toggleNodeCustom(${coordinator_sid},${node_sid})">N${node_sid}${stIcon}</div>`;
                         });
                     }
                     html += '</div></div>';
@@ -1529,8 +1529,8 @@
         }
 
         // ─── SELECTION HANDLERS ───
-        function selectIndividualCoord(cSid) {
-            if (selectedCoordinatorSid === cSid) {
+        function selectIndividualCoord(coordinator_sid) {
+            if (selectedCoordinatorSid === coordinator_sid) {
                 // Deselect coordinator
                 selectedCoordinatorSid = null;
                 selectedNodeSid = null;
@@ -1539,10 +1539,10 @@
                 activeNodeSid = null;
             } else {
                 // Select coordinator
-                selectedCoordinatorSid = cSid;
+                selectedCoordinatorSid = coordinator_sid;
                 selectedNodeSid = null;
                 selection = {};
-                activeCoordinatorSid = cSid;
+                activeCoordinatorSid = coordinator_sid;
                 activeNodeSid = null;
             }
             renderNetwork();
@@ -1550,8 +1550,8 @@
             if (window.navigator.vibrate) window.navigator.vibrate(10);
         }
 
-        function selectIndividualNode(cSid, nSid) {
-            const isSel = (selectedNodeSid === nSid && selectedCoordinatorSid === cSid);
+        function selectIndividualNode(coordinator_sid, node_sid) {
+            const isSel = (selectedNodeSid === node_sid && selectedCoordinatorSid === coordinator_sid);
             if (isSel) {
                 // Deselect node
                 selectedNodeSid = null;
@@ -1560,24 +1560,24 @@
                 // keep selectedCoordinatorSid active
             } else {
                 // Select single node
-                selectedNodeSid = nSid;
+                selectedNodeSid = node_sid;
                 selection = {};
-                selection[cSid] = [nSid];
-                activeCoordinatorSid = cSid;
-                activeNodeSid = nSid;
+                selection[coordinator_sid] = [node_sid];
+                activeCoordinatorSid = coordinator_sid;
+                activeNodeSid = node_sid;
             }
             renderNetwork();
             renderChart();
             if (window.navigator.vibrate) window.navigator.vibrate(10);
         }
 
-        function toggleNodeCustom(cSid, nSid) {
-            if (!selection[cSid]) selection[cSid] = [];
-            const idx = selection[cSid].indexOf(nSid);
+        function toggleNodeCustom(coordinator_sid, node_sid) {
+            if (!selection[coordinator_sid]) selection[coordinator_sid] = [];
+            const idx = selection[coordinator_sid].indexOf(node_sid);
             if (idx >= 0) {
-                selection[cSid].splice(idx, 1);
-                if (selection[cSid].length === 0) delete selection[cSid];
-                if (activeCoordinatorSid === cSid && activeNodeSid === nSid) {
+                selection[coordinator_sid].splice(idx, 1);
+                if (selection[coordinator_sid].length === 0) delete selection[coordinator_sid];
+                if (activeCoordinatorSid === coordinator_sid && activeNodeSid === node_sid) {
                     const remainingCoords = Object.keys(selection);
                     if (remainingCoords.length > 0) {
                         activeCoordinatorSid = parseInt(remainingCoords[0]);
@@ -1588,25 +1588,25 @@
                     }
                 }
             } else {
-                selection[cSid].push(nSid);
-                activeCoordinatorSid = cSid;
-                activeNodeSid = nSid;
+                selection[coordinator_sid].push(node_sid);
+                activeCoordinatorSid = coordinator_sid;
+                activeNodeSid = node_sid;
             }
             renderNetwork();
             renderChart();
             if (window.navigator.vibrate) window.navigator.vibrate(10);
         }
 
-        function toggleAllNodes(cSid, checked) {
+        function toggleAllNodes(coordinator_sid, checked) {
             if (checked) {
-                selection[cSid] = [...(topology[cSid] || [])];
-                if (selection[cSid].length > 0) {
-                    activeCoordinatorSid = cSid;
-                    activeNodeSid = selection[cSid][0];
+                selection[coordinator_sid] = [...(topology[coordinator_sid] || [])];
+                if (selection[coordinator_sid].length > 0) {
+                    activeCoordinatorSid = coordinator_sid;
+                    activeNodeSid = selection[coordinator_sid][0];
                 }
             } else {
-                delete selection[cSid];
-                if (activeCoordinatorSid === cSid) {
+                delete selection[coordinator_sid];
+                if (activeCoordinatorSid === coordinator_sid) {
                     const remainingCoords = Object.keys(selection);
                     if (remainingCoords.length > 0) {
                         activeCoordinatorSid = parseInt(remainingCoords[0]);
@@ -1844,16 +1844,15 @@
             const s_c = (modeControl === 1) ? (damperMinutes * 60) : 0;
             const s_ds = (modeSleep === 1) ? (sleepMinutes * 60) : 0;
 
-            // Build targets from selection
+            // Build targets from selection (strictly using real coordinator_sid and node_sids)
             const targets = [];
             Object.keys(selection).forEach(coordinator_sid_key => {
                 const coordinator_sid = parseInt(coordinator_sid_key);
                 const node_sids = selection[coordinator_sid];
                 if (node_sids && node_sids.length > 0) {
-                    const allSelected = topology[coordinator_sid] && node_sids.length === topology[coordinator_sid].length;
                     targets.push({
                         coordinator_sid: coordinator_sid,
-                        node_sids: allSelected ? ["*"] : node_sids
+                        node_sids: node_sids.map(Number)
                     });
                 }
             });
@@ -1871,33 +1870,41 @@
                 targets: targets
             };
 
+            // ─── PURE BINARY DOWNLINK BUFFER (10 Bytes per target node) ───
+            const cmdId = (s_v > 0 || s_c > 0) ? 0x03 : 0x02; // CMD_SLEEP or CMD_ACTUATORS
+            const valveVal = document.getElementById('vToggle').checked ? rOn : rOff;
+            const m1Angle = clampAngle(document.getElementById('cInput').value);
+            const m2Angle = clampAngle(document.getElementById('cInput').value);
+            const holdD = Math.min(255, Math.round(s_c / 60));
+            const holdV = Math.min(255, Math.round(s_v / 60));
+
+            let totalTargetsCount = 0;
+            targets.forEach(t => { totalTargetsCount += t.node_sids.length; });
+            const binBuffer = new Uint8Array(totalTargetsCount * 10);
+            let binOffset = 0;
+
+            targets.forEach(t => {
+                const coordinator_sid = t.coordinator_sid;
+                t.node_sids.forEach(node_sid => {
+                    const pkt = packBinaryDownlink(coordinator_sid, node_sid, cmdId, valveVal, m1Angle, m2Angle, holdD, holdV);
+                    binBuffer.set(pkt, binOffset);
+                    binOffset += 10;
+                });
+            });
+
             const payload = JSON.stringify(data);
             const btn = document.getElementById('btnApply');
             btn.innerText = "TRANSMITTING...";
             btn.style.opacity = "0.6";
 
-            // If active HTTP API endpoint exists, dispatch via direct REST API so panel stays 100% open!
-            if (activeApiUrl) {
-                const cmdUrl = activeApiUrl.replace('/telemetry', '/command');
-                const targetCoord = (targets && targets.length > 0) ? (targets[0].coordinator_sid || 1) : (selectedCoordinatorSid || 1);
-                const targetNodes = (targets && targets.length > 0 && targets[0].node_sids) ? targets[0].node_sids : [selectedNodeSid || 1];
-                const targetNode = targetNodes[0] || 1;
-                const cmdId = (s_v > 0 || s_c > 0) ? 0x03 : 0x02; // CMD_SLEEP or CMD_ACTUATORS
-                const binPkt = packBinaryDownlink(
-                    targetCoord,
-                    targetNode,
-                    cmdId,
-                    document.getElementById('vToggle').checked ? rOn : rOff,
-                    clampAngle(document.getElementById('cInput').value),
-                    clampAngle(document.getElementById('cInput').value),
-                    Math.min(255, Math.round(s_c / 60)),
-                    Math.min(255, Math.round(s_v / 60))
-                );
-
+            // Dispatch directed command in pure binary via REST API (application/octet-stream)
+            let baseUrl = (activeApiUrl || telemetryApiUrl || telemetryFallbackApiUrl || '');
+            if (baseUrl && binBuffer.length > 0) {
+                const cmdUrl = baseUrl.replace(/\/telemetry.*$/, '/command');
                 fetch(cmdUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/octet-stream' },
-                    body: binPkt
+                    body: binBuffer
                 }).then(resp => {
                     if (resp.ok) {
                         btn.innerText = "COMMAND SENT ✅";
@@ -2557,12 +2564,11 @@
                 let baseUrl = (activeApiUrl || telemetryApiUrl || telemetryFallbackApiUrl || '');
                 let cmdUrl = baseUrl ? baseUrl.replace(/\/telemetry.*$/, '/command') : '/command';
 
-                // Send binary cancel downlink packet (cmd_id = 0xFE)
-                const cancelPkt = packBinaryDownlink(0, 0, 0xFE, (cmdId || 0) & 0xFF, 0, 0, 0, 0);
+                const cancelData = JSON.stringify({ action: "cancel", cmd_id: cmdId });
                 const response = await fetch(cmdUrl, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/octet-stream' },
-                    body: cancelPkt
+                    headers: { 'Content-Type': 'application/json' },
+                    body: cancelData
                 });
 
                 if (window._latestCmdHistory) {
@@ -2624,8 +2630,7 @@
                     clearTimeout(timeoutId);
                     if (resp.ok) {
                         const contentType = resp.headers.get("Content-Type") || "";
-                        let data = null;
-                        let isEmpty = false;
+                        let cmdHist = [];
                         if (contentType.includes("octet-stream")) {
                             const buf = await resp.arrayBuffer();
                             if (buf.byteLength === 0) {
@@ -2643,6 +2648,7 @@
                                 try {
                                     const parsed = JSON.parse(text);
                                     data = parsed.telemetry || parsed;
+                                    if (parsed.command_history) cmdHist = parsed.command_history;
                                 } catch (e) {
                                     const enc = new TextEncoder();
                                     data = decodeSuperPackets(enc.encode(text).buffer);
@@ -2659,7 +2665,7 @@
                             } else {
                                 updateLinkStatusBadge(`🟢 ${cand.name} (Rx #${totalRxCount} • BIN)`, "#00e676");
                             }
-                            return { telemetry: data };
+                            return { telemetry: data, command_history: cmdHist };
                         } else {
                             window._lastPollDiag = `${cand.name} CRC ERR`;
                         }
@@ -2731,39 +2737,39 @@
 
                     // 2. Reconcile nodes per active coordinator
                     for (const [coordinator_sid_str, data] of Object.entries(telData)) {
-                        const coordSidNum = parseInt(coordinator_sid_str);
+                        const coordinator_sid = parseInt(coordinator_sid_str);
                         if (data.coord_ina) {
-                            latestCoordIna[coordSidNum] = data.coord_ina;
+                            latestCoordIna[coordinator_sid] = data.coord_ina;
                         }
-                        if (!topology[coordSidNum]) {
-                            topology[coordSidNum] = [];
+                        if (!topology[coordinator_sid]) {
+                            topology[coordinator_sid] = [];
                             topoChanged = true;
                         }
 
                         const liveNodeSids = data.nodes ? Object.keys(data.nodes).map(Number) : [];
 
                         // Remove any node from topology that is not in liveNodeSids
-                        const prevNodes = topology[coordSidNum] || [];
-                        const filteredNodes = prevNodes.filter(nSid => liveNodeSids.includes(nSid));
+                        const prevNodes = topology[coordinator_sid] || [];
+                        const filteredNodes = prevNodes.filter(node_sid => liveNodeSids.includes(node_sid));
                         if (filteredNodes.length !== prevNodes.length) {
-                            topology[coordSidNum] = filteredNodes;
+                            topology[coordinator_sid] = filteredNodes;
                             topoChanged = true;
-                            if (selectedCoordinatorSid === coordSidNum && !liveNodeSids.includes(selectedNodeSid)) {
+                            if (selectedCoordinatorSid === coordinator_sid && !liveNodeSids.includes(selectedNodeSid)) {
                                 selectedNodeSid = null;
                             }
-                            if (activeCoordinatorSid === coordSidNum && !liveNodeSids.includes(activeNodeSid)) {
+                            if (activeCoordinatorSid === coordinator_sid && !liveNodeSids.includes(activeNodeSid)) {
                                 activeNodeSid = null;
                             }
-                            if (selection[coordSidNum]) {
-                                selection[coordSidNum] = selection[coordSidNum].filter(nSid => liveNodeSids.includes(nSid));
-                                if (selection[coordSidNum].length === 0) delete selection[coordSidNum];
+                            if (selection[coordinator_sid]) {
+                                selection[coordinator_sid] = selection[coordinator_sid].filter(node_sid => liveNodeSids.includes(node_sid));
+                                if (selection[coordinator_sid].length === 0) delete selection[coordinator_sid];
                             }
                         }
 
                         if (data.nodes) {
                             for (const [node_sid_str, nodeData] of Object.entries(data.nodes)) {
-                                const nodeSidNum = parseInt(node_sid_str);
-                                const key = coordSidNum + '_' + nodeSidNum;
+                                const node_sid = parseInt(node_sid_str);
+                                const key = coordinator_sid + '_' + node_sid;
                                 const prev = window.nodeStateMap[key];
                                 const currentStatus = nodeData.status || (nodeData.has_uplink ? "ONLINE" : "SLEEPING");
                                 const currentBusy = !!nodeData.is_busy;
@@ -2776,8 +2782,8 @@
                                     is_busy: currentBusy
                                 };
 
-                                if (!topology[coordSidNum].includes(nodeSidNum)) {
-                                    topology[coordSidNum].push(nodeSidNum);
+                                if (!topology[coordinator_sid].includes(node_sid)) {
+                                    topology[coordinator_sid].push(node_sid);
                                     topoChanged = true;
                                 }
                                 const hasRealSensors = (nodeData.gas_t !== undefined && nodeData.gas_t !== null) ||
