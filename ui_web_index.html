@@ -2432,14 +2432,38 @@
             else if (st === 'TRANSITION') statusSuffix = ' [🟡 TRANSITION]';
             if (isBusy) statusSuffix += ' [⚙️ BUSY]';
 
-            setSleepOverlay(st === 'SLEEPING' || st === 'TRANSITION', st === 'TRANSITION');
+            window.nodeSleepStartMap = window.nodeSleepStartMap || {};
+            const isSleeping = (st === 'SLEEPING' || st === 'TRANSITION');
+            if (isSleeping) {
+                if (!window.nodeSleepStartMap[key]) {
+                    const lastAwake = (allHistory.length > 0) ? allHistory[allHistory.length - 1] : null;
+                    window.nodeSleepStartMap[key] = (lastAwake && lastAwake._t) ? lastAwake._t : Date.now();
+                }
+            } else {
+                delete window.nodeSleepStartMap[key];
+            }
 
             if (!allHistory || allHistory.length === 0) {
                 document.getElementById('paramValue').textContent = `${getPlaceholderValue(p)}${statusSuffix}`;
                 chartPolyline.setAttribute('points', '0,80 400,80');
                 chartPolyline.setAttribute('stroke-dasharray', '4,4');
-                chartPolyline.setAttribute('stroke', st === 'SLEEPING' ? '#818cf8' : 'rgba(255,255,255,0.2)');
+                chartPolyline.setAttribute('stroke', 'rgba(255,255,255,0.2)');
                 chartArea.setAttribute('points', '');
+                if (sleepShading) {
+                    if (isSleeping) {
+                        sleepShading.setAttribute('x', '0');
+                        sleepShading.setAttribute('width', '400');
+                        sleepShading.setAttribute('opacity', (st === 'TRANSITION') ? '0.35' : '0.65');
+                        if (sleepShadingText) {
+                            sleepShadingText.setAttribute('x', '200');
+                            sleepShadingText.textContent = (st === 'TRANSITION') ? '🟡 ENTERING DEEPSLEEP' : '💤 SLEEPING (DEEPSLEEP)';
+                            sleepShadingText.setAttribute('opacity', '0.9');
+                        }
+                    } else {
+                        sleepShading.setAttribute('opacity', '0');
+                        if (sleepShadingText) sleepShadingText.setAttribute('opacity', '0');
+                    }
+                }
                 updatePowerMetrics(null, latestCoordIna, activeCoordinatorSid);
                 return;
             }
@@ -2454,6 +2478,33 @@
             } else {
                 windowMs = timeWindowMinutes * 60 * 1000;
                 windowStart = now - windowMs;
+            }
+
+            // Calculate x coordinate where sleep began (or 400 if online)
+            let xSleep = 400;
+            const sleepStartT = isSleeping ? (window.nodeSleepStartMap[key] || now) : now;
+            if (isSleeping) {
+                xSleep = Math.max(0, Math.min(400, ((sleepStartT - windowStart) / windowMs) * 400));
+            }
+
+            // Apply shading ONLY from xSleep to 400 (present time), preserving prior awake history untouched
+            if (isSleeping && sleepShading) {
+                const sleepWidth = Math.max(0, 400 - xSleep);
+                sleepShading.setAttribute('x', xSleep.toFixed(1));
+                sleepShading.setAttribute('width', sleepWidth.toFixed(1));
+                sleepShading.setAttribute('opacity', (st === 'TRANSITION') ? '0.35' : '0.65');
+                if (sleepShadingText) {
+                    if (sleepWidth > 55) {
+                        sleepShadingText.setAttribute('x', (xSleep + sleepWidth / 2).toFixed(1));
+                        sleepShadingText.textContent = (st === 'TRANSITION') ? '🟡 ENTERING DEEPSLEEP' : '💤 SLEEPING (DEEPSLEEP)';
+                        sleepShadingText.setAttribute('opacity', '0.9');
+                    } else {
+                        sleepShadingText.setAttribute('opacity', '0');
+                    }
+                }
+            } else if (sleepShading) {
+                sleepShading.setAttribute('opacity', '0');
+                if (sleepShadingText) sleepShadingText.setAttribute('opacity', '0');
             }
 
             // Update axis labels on SVG based on active window
@@ -2538,27 +2589,38 @@
                 pointsArr.push(`0,${calcY(windowHistory[0][p.key])}`);
             }
 
-            // 2. Real timestamp points within [windowStart, now]
+            // 2. Real timestamp points within [windowStart, sleepStartT]
             for (let i = 0; i < windowHistory.length; i++) {
                 const item = windowHistory[i];
                 const rawVal = item[p.key];
                 if (rawVal !== undefined && rawVal !== null) {
                     const itemTime = item._t || (windowStart + (i / Math.max(1, windowHistory.length - 1)) * windowMs);
+                    if (isSleeping && itemTime > sleepStartT) continue;
                     const x = Math.max(0, Math.min(400, ((itemTime - windowStart) / windowMs) * 400));
                     pointsArr.push(`${x.toFixed(1)},${calcY(rawVal)}`);
                 }
             }
 
-            // 3. Right anchor at x = 400 (now): project latest reading to the current edge
+            // 3. Right edge connection:
+            // If ONLINE: connect line to now (x=400)
+            // If SLEEPING: stop the line at xSleep (where sleep began), transitioning directly to the shading
             if (latestVal !== undefined && latestVal !== null) {
-                pointsArr.push(`400,${calcY(latestVal)}`);
+                if (isSleeping) {
+                    if (xSleep > 0 && pointsArr.length > 0) {
+                        pointsArr.push(`${xSleep.toFixed(1)},${calcY(latestVal)}`);
+                    }
+                } else {
+                    pointsArr.push(`400,${calcY(latestVal)}`);
+                }
             }
 
             if (pointsArr.length > 0) {
                 const polyStr = pointsArr.join(' ');
                 chartPolyline.setAttribute('points', polyStr);
                 chartPolyline.setAttribute('stroke', p.color);
-                chartArea.setAttribute('points', `0,160 ${polyStr} 400,160`);
+                const firstX = pointsArr[0].split(',')[0];
+                const lastX = pointsArr[pointsArr.length - 1].split(',')[0];
+                chartArea.setAttribute('points', `${firstX},160 ${polyStr} ${lastX},160`);
             } else {
                 chartPolyline.setAttribute('points', '');
                 chartArea.setAttribute('points', '');
