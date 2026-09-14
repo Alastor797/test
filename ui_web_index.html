@@ -1004,9 +1004,22 @@
                                 <stop offset="0%" stop-color="#00f0ff" />
                                 <stop offset="100%" stop-color="#00f0ff" stop-opacity="0" />
                             </linearGradient>
+                            <!-- 1. SLEEPING HATCH (Indigo/Blue #818cf8) -->
                             <pattern id="sleepHatch" width="16" height="16" patternTransform="rotate(45 0 0)"
                                 patternUnits="userSpaceOnUse">
-                                <line x1="0" y1="0" x2="0" y2="16" stroke="rgba(129, 140, 248, 0.25)"
+                                <line x1="0" y1="0" x2="0" y2="16" stroke="rgba(129, 140, 248, 0.35)"
+                                    stroke-width="2.5" />
+                            </pattern>
+                            <!-- 2. TRANSITION / SYNC HATCH (Gold/Amber #facc15) -->
+                            <pattern id="transitionHatch" width="16" height="16" patternTransform="rotate(45 0 0)"
+                                patternUnits="userSpaceOnUse">
+                                <line x1="0" y1="0" x2="0" y2="16" stroke="rgba(250, 204, 21, 0.40)"
+                                    stroke-width="2.5" />
+                            </pattern>
+                            <!-- 3. LOST / OFFLINE HATCH (Crimson Red #ef4444) -->
+                            <pattern id="lostHatch" width="16" height="16" patternTransform="rotate(45 0 0)"
+                                patternUnits="userSpaceOnUse">
+                                <line x1="0" y1="0" x2="0" y2="16" stroke="rgba(239, 68, 68, 0.40)"
                                     stroke-width="2.5" />
                             </pattern>
                         </defs>
@@ -2467,35 +2480,59 @@
 
             const now = Date.now();
 
-            // ─── PERSISTENT HISTORICAL SLEEP INTERVALS TRACKING ───
-            // Remembers exact start/end timestamps of every deepsleep period so historical shading is NEVER wiped
-            window.nodeSleepIntervals = window.nodeSleepIntervals || {};
-            if (!window.nodeSleepIntervals[key]) window.nodeSleepIntervals[key] = [];
-            const intervals = window.nodeSleepIntervals[key];
-            const isCurrentlySleeping = (st === 'SLEEPING' || st === 'TRANSITION');
+            // ─── PERSISTENT HISTORICAL 4-STATE TIMELINE TRACKING ───
+            // Remembers exact start/end timestamps and states (SLEEPING, TRANSITION, LOST)
+            // so historical state shadings are NEVER wiped and no unexplained empty gaps exist.
+            window.nodeStateIntervals = window.nodeStateIntervals || {};
+            if (!window.nodeStateIntervals[key]) window.nodeStateIntervals[key] = [];
+            const intervals = window.nodeStateIntervals[key];
+            window.nodeSleepIntervals = window.nodeStateIntervals; // backward-compatibility alias
 
+            const isNonOnline = (st === 'SLEEPING' || st === 'TRANSITION' || st === 'LOST');
             const lastInterval = intervals.length > 0 ? intervals[intervals.length - 1] : null;
-            if (isCurrentlySleeping) {
+
+            if (isNonOnline) {
                 if (!lastInterval || lastInterval.end !== null) {
+                    // New non-online period starts: anchor to last known uplink timestamp or now
                     const lastAwake = (allHistory.length > 0) ? allHistory[allHistory.length - 1] : null;
-                    const sleepStart = (lastAwake && lastAwake._t) ? lastAwake._t : now;
-                    intervals.push({ start: sleepStart, end: null, isTransition: (st === 'TRANSITION') });
-                } else {
-                    lastInterval.isTransition = (st === 'TRANSITION');
+                    const startT = (lastAwake && lastAwake._t && (now - lastAwake._t) < 3600000) ? lastAwake._t : now;
+                    intervals.push({ start: startT, end: null, state: st });
+                } else if (lastInterval.state !== st) {
+                    // State changed while non-online (e.g., from SLEEPING to TRANSITION, or TRANSITION to LOST)
+                    lastInterval.end = now;
+                    intervals.push({ start: now, end: null, state: st });
                 }
             } else {
                 if (lastInterval && lastInterval.end === null) {
-                    // Node just woke up: close the sleep interval with the timestamp of waking
+                    // Node just transitioned back to ONLINE: close active interval with first awake timestamp
                     const firstAwake = (allHistory.length > 0) ? allHistory[allHistory.length - 1] : null;
                     lastInterval.end = (firstAwake && firstAwake._t && firstAwake._t > lastInterval.start) ? firstAwake._t : now;
                 }
             }
 
-            // Prune intervals older than 24h
+            // Detect and register any unrecorded gaps (> 45s) between historical points as LOST
+            if (allHistory && allHistory.length > 1) {
+                for (let i = 1; i < allHistory.length; i++) {
+                    const t0 = allHistory[i - 1]._t;
+                    const t1 = allHistory[i]._t;
+                    if (t0 && t1 && (t1 - t0 > 45000)) {
+                        const covered = intervals.some(inv => {
+                            const e = inv.end || now;
+                            return (t0 >= inv.start && t0 < e) || (t1 > inv.start && t1 <= e) || (inv.start >= t0 && e <= t1);
+                        });
+                        if (!covered) {
+                            intervals.push({ start: t0, end: t1, state: 'LOST' });
+                        }
+                    }
+                }
+            }
+
+            // Prune intervals older than 24h & sort chronologically
             const cutoff24h = now - 24 * 3600 * 1000;
             while (intervals.length > 0 && (intervals[0].end || intervals[0].start) < cutoff24h) {
                 intervals.shift();
             }
+            intervals.sort((a, b) => a.start - b.start);
 
             // Real data renderer: filter history within active time window (5m, 15m, 1h, ALL)
             let windowMs, windowStart;
@@ -2508,10 +2545,10 @@
                 windowStart = now - windowMs;
             }
 
-            // Render ALL active and historical sleep shadings within this window
+            // Render ALL active and historical 4-state shadings within this window
             const sleepGroup = document.getElementById('sleepShadingGroup');
             if (sleepGroup) {
-                let sleepSvg = '';
+                let shadingSvg = '';
                 intervals.forEach(inv => {
                     const invStart = inv.start;
                     const invEnd = inv.end || now;
@@ -2522,15 +2559,33 @@
                         const x2 = Math.max(0, Math.min(400, ((t2 - windowStart) / windowMs) * 400));
                         const w = x2 - x1;
                         if (w > 0.5) {
-                            sleepSvg += `<rect x="${x1.toFixed(1)}" y="0" width="${w.toFixed(1)}" height="160" fill="url(#sleepHatch)" opacity="0.65" />`;
-                            if (w > 65) {
-                                const label = (inv.end === null && inv.isTransition) ? '🟡 ENTERING DEEPSLEEP' : '💤 SLEEPING (DEEPSLEEP)';
-                                sleepSvg += `<text x="${(x1 + w / 2).toFixed(1)}" y="85" text-anchor="middle" fill="#818cf8" font-family="'Orbitron',sans-serif" font-size="11" letter-spacing="2" opacity="0.9">${label}</text>`;
+                            let hatchUrl = 'url(#sleepHatch)';
+                            let textColor = '#818cf8';
+                            let fullLabel = '💤 SLEEPING (DEEPSLEEP)';
+                            let shortLabel = '💤';
+
+                            if (inv.state === 'TRANSITION') {
+                                hatchUrl = 'url(#transitionHatch)';
+                                textColor = '#facc15';
+                                fullLabel = '🟡 SYNC / TRANSITION';
+                                shortLabel = '⏳';
+                            } else if (inv.state === 'LOST') {
+                                hatchUrl = 'url(#lostHatch)';
+                                textColor = '#ef4444';
+                                fullLabel = '🔴 LOST / OFFLINE';
+                                shortLabel = '⚠️';
+                            }
+
+                            shadingSvg += `<rect x="${x1.toFixed(1)}" y="0" width="${w.toFixed(1)}" height="160" fill="${hatchUrl}" opacity="0.75" />`;
+                            if (w > 70) {
+                                shadingSvg += `<text x="${(x1 + w / 2).toFixed(1)}" y="85" text-anchor="middle" fill="${textColor}" font-family="'Orbitron',sans-serif" font-size="10.5" font-weight="700" letter-spacing="1.5" opacity="0.95">${fullLabel}</text>`;
+                            } else if (w > 20) {
+                                shadingSvg += `<text x="${(x1 + w / 2).toFixed(1)}" y="85" text-anchor="middle" fill="${textColor}" font-family="'Orbitron',sans-serif" font-size="12" opacity="0.95">${shortLabel}</text>`;
                             }
                         }
                     }
                 });
-                sleepGroup.innerHTML = sleepSvg;
+                sleepGroup.innerHTML = shadingSvg;
             }
 
             if (!allHistory || allHistory.length === 0) {
@@ -2616,26 +2671,27 @@
                 return (160 - (norm * 100 + 30)).toFixed(1);
             };
 
-            // Helper to check if a sleep interval exists between two timestamps
-            const isSleepingBetween = (tPrev, tNext) => {
+            // Helper to check if a non-online interval (or communication gap) exists between two timestamps
+            const isNonOnlineBetween = (tPrev, tNext) => {
+                if (tNext - tPrev > 45000) return true;
                 return intervals.some(inv => {
                     const end = inv.end || now;
-                    return (tPrev <= inv.start && tNext >= inv.start) || (tPrev < end && tNext >= end) || (tNext - tPrev > 45000);
+                    return (tPrev <= inv.start && tNext >= inv.start) || (tPrev < end && tNext >= end);
                 });
             };
 
-            // Build separate disconnected segments: lines NEVER draw across sleep intervals!
+            // Build separate disconnected segments: lines NEVER draw across non-online / pause intervals!
             let segments = [];
             let currentSeg = [];
 
             if (anchorBefore && anchorBefore[p.key] !== undefined && anchorBefore[p.key] !== null) {
                 const anchorTime = anchorBefore._t || windowStart;
-                if (!isSleepingBetween(anchorTime, windowStart)) {
+                if (!isNonOnlineBetween(anchorTime, windowStart)) {
                     currentSeg.push({ x: 0, y: parseFloat(calcY(anchorBefore[p.key])), _t: windowStart });
                 }
             } else if (windowHistory.length > 0 && windowHistory[0][p.key] !== undefined && windowHistory[0][p.key] !== null) {
                 const firstTime = windowHistory[0]._t || windowStart;
-                if ((firstTime - windowStart) < 30000 && !isSleepingBetween(windowStart, firstTime)) {
+                if ((firstTime - windowStart) < 30000 && !isNonOnlineBetween(windowStart, firstTime)) {
                     currentSeg.push({ x: 0, y: parseFloat(calcY(windowHistory[0][p.key])), _t: windowStart });
                 }
             }
@@ -2646,13 +2702,13 @@
                 if (rawVal !== undefined && rawVal !== null) {
                     const itemTime = item._t || (windowStart + (i / Math.max(1, windowHistory.length - 1)) * windowMs);
                     
-                    // Skip if reading falls inside any sleep interval
-                    const inSleep = intervals.some(inv => itemTime >= inv.start && itemTime < (inv.end || now));
-                    if (inSleep) continue;
+                    // Skip if reading falls inside any non-online interval
+                    const inNonOnline = intervals.some(inv => itemTime >= inv.start && itemTime < (inv.end || now));
+                    if (inNonOnline) continue;
 
                     if (currentSeg.length > 0) {
                         const prevTime = currentSeg[currentSeg.length - 1]._t || windowStart;
-                        if (isSleepingBetween(prevTime, itemTime)) {
+                        if (isNonOnlineBetween(prevTime, itemTime)) {
                             segments.push(currentSeg);
                             currentSeg = [];
                         }
@@ -2664,7 +2720,7 @@
             }
 
             // If node is currently ONLINE, extend the active awake line to NOW (x=400)
-            if (!isCurrentlySleeping && currentSeg.length > 0 && latestVal !== undefined && latestVal !== null) {
+            if (st === 'ONLINE' && currentSeg.length > 0 && latestVal !== undefined && latestVal !== null) {
                 currentSeg.push({ x: 400, y: parseFloat(calcY(latestVal)) });
             }
 
