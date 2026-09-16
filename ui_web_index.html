@@ -954,12 +954,12 @@
                         </div>
                         <div class="precision-control">
                             <button class="step-btn" onclick="stepSleepDuration(-1)">-</button>
-                            <input type="number" id="sInput" class="num-input" min="1" max="180" value="30"
+                            <input type="number" id="sInput" class="num-input" min="0" max="360" value="30"
                                 step="1" oninput="syncSleepDurationFromInput()">
                             <span class="num-unit">min</span>
                             <button class="step-btn" onclick="stepSleepDuration(1)">+</button>
                         </div>
-                        <input type="range" id="sSlider" min="1" max="180" value="30" step="1" oninput="syncSleepDurationFromSlider()">
+                        <input type="range" id="sSlider" min="0" max="360" value="30" step="1" oninput="syncSleepDurationFromSlider()">
                     </div>
                     <label class="toggle-row toggle-danger">
                         <span style="font-size:.85rem;font-weight:700;color:#ff4d82;text-transform:uppercase">Immediate
@@ -1168,18 +1168,19 @@
             return crc;
         }
 
-        function packBinaryDownlink(coordinator_sid, node_sid, cmdId, targetValve, targetM1, targetM2, holdDamper, holdValve, sysFlags) {
-            const buf = new Uint8Array(10);
+        function packBinaryDownlink(coordinator_sid, node_sid, modeBits, targetValve, targetM1, targetM2, holdDamper, holdValve, sleepTime) {
+            const buf = new Uint8Array(13);
+            const view = new DataView(buf.buffer);
             buf[0] = Number(coordinator_sid) & 0xFF;
             buf[1] = Number(node_sid) & 0xFF;
-            buf[2] = Number(cmdId || 0x02) & 0xFF;
+            buf[2] = Number(modeBits) & 0xFF;
             buf[3] = Number(targetValve || 0) & 0xFF;
             buf[4] = Math.round(targetM1 || 0) & 0xFF;
             buf[5] = Math.round(targetM2 || 0) & 0xFF;
-            buf[6] = Math.round(holdDamper || 0) & 0xFF;
-            buf[7] = Math.round(holdValve || 0) & 0xFF;
-            buf[8] = Number(sysFlags || 0) & 0xFF; // sys_flags (Bit 0: MANUAL CONTROL, Bit 1: FORCE_SLEEP, Bit 2: UPDATE_SLEEP_SP)
-            buf[9] = calcCrc8(buf, 2, 7); // CRC8 over the 7 downlink bytes (cmdId to sysFlags)
+            view.setUint16(6, Math.min(360, Math.max(0, Math.round(holdDamper || 0))), true);
+            view.setUint16(8, Math.min(360, Math.max(0, Math.round(holdValve || 0))), true);
+            view.setUint16(10, Math.min(360, Math.max(0, Math.round(sleepTime || 0))), true);
+            buf[12] = calcCrc8(buf, 1, 11); // CRC8 over the 11 bytes of node order (node_sid to sleepTime)
             return buf;
         }
 
@@ -1877,8 +1878,8 @@
         // ─── DEEPSLEEP DURATION STEP & SYNC ───
         function clampSleepDuration(val) {
             const sSlider = document.getElementById('sSlider');
-            const min = sSlider ? (parseInt(sSlider.min) || 1) : 1;
-            const max = sSlider ? (parseInt(sSlider.max) || 180) : 180;
+            const min = (sSlider && !isNaN(parseInt(sSlider.min))) ? parseInt(sSlider.min) : 0;
+            const max = (sSlider && !isNaN(parseInt(sSlider.max))) ? parseInt(sSlider.max) : 360;
             const n = parseInt(val);
             if (isNaN(n)) return min;
             return Math.max(min, Math.min(max, n));
@@ -1892,14 +1893,16 @@
         }
 
         function syncSleepDurationFromSlider() {
-            const val = parseInt(document.getElementById('sSlider').value) || 1;
+            const parsed = parseInt(document.getElementById('sSlider').value);
+            const val = isNaN(parsed) ? 0 : parsed;
             const sInput = document.getElementById('sInput');
             if (sInput) sInput.value = val;
             document.getElementById('sVal').innerText = val + ' min';
         }
 
         function stepSleepDuration(amount) {
-            const current = parseInt(document.getElementById('sSlider').value) || 1;
+            const parsed = parseInt(document.getElementById('sSlider').value);
+            const current = isNaN(parsed) ? 0 : parsed;
             setSleepDuration(current + amount);
         }
 
@@ -1923,15 +1926,22 @@
             }
 
             let flags = 0;
-            if (modeControl === 1) flags |= (1 << 0);
-            if (modeSleep === 1) {
-                flags |= (1 << 2);
-                if (document.getElementById('forceCheck').checked) flags |= (1 << 1);
+            if (modeControl === 1 && modeSleep === 1) {
+                flags = 3; // 0b11: Both (Actuators first, then DeepSleep)
+            } else if (modeControl === 1) {
+                flags = 1; // 0b01: Actuators only
+            } else if (modeSleep === 1) {
+                flags = 2; // 0b10: DeepSleep only
+            } else {
+                flags = 0; // 0b00: Autonomous
             }
 
-            const sleepMinutes = parseInt(document.getElementById('sSlider').value) || 2;
-            const valveMinutes = parseInt(document.getElementById('vDurationInput').value) || 15;
-            const damperMinutes = parseInt(document.getElementById('cDurationInput').value) || 30;
+            const parsedSleep = parseInt(document.getElementById('sSlider').value);
+            const sleepMinutes = isNaN(parsedSleep) ? 0 : parsedSleep;
+            const parsedV = parseInt(document.getElementById('vDurationInput').value);
+            const valveMinutes = isNaN(parsedV) ? 15 : parsedV;
+            const parsedD = parseInt(document.getElementById('cDurationInput').value);
+            const damperMinutes = isNaN(parsedD) ? 30 : parsedD;
 
             const s_v = (modeControl === 1) ? (valveMinutes * 60) : 0;
             const s_c = (modeControl === 1) ? (damperMinutes * 60) : 0;
@@ -1989,15 +1999,15 @@
 
             let totalTargetsCount = 0;
             targets.forEach(t => { totalTargetsCount += t.node_sids.length; });
-            const binBuffer = new Uint8Array(totalTargetsCount * 10);
+            const binBuffer = new Uint8Array(totalTargetsCount * 13);
             let binOffset = 0;
 
             targets.forEach(t => {
                 const coordinator_sid = t.coordinator_sid;
                 t.node_sids.forEach(node_sid => {
-                    const pkt = packBinaryDownlink(coordinator_sid, node_sid, cmdId, valveVal, m1Angle, m2Angle, holdD, holdV, flags);
+                    const pkt = packBinaryDownlink(coordinator_sid, node_sid, flags, valveVal, m1Angle, m2Angle, damperMinutes, valveMinutes, sleepMinutes);
                     binBuffer.set(pkt, binOffset);
-                    binOffset += 10;
+                    binOffset += 13;
                 });
             });
 
