@@ -873,22 +873,22 @@
                             <span
                                 style="font-size:.75rem;font-weight:700;color:rgba(255,255,255,0.6);text-transform:uppercase">Irrigation
                                 Timer (Duration)</span>
-                            <span id="vDurationVal" class="val" style="color:var(--primary);font-weight:700">15
+                            <span id="vDurationVal" class="val" style="color:var(--primary);font-weight:700">0
                                 min</span>
                         </div>
                         <div class="precision-control">
                             <button class="step-btn" onclick="stepValveDuration(-1)">−</button>
-                            <input type="number" id="vDurationInput" class="num-input" min="0" max="60" value="15"
+                            <input type="number" id="vDurationInput" class="num-input" min="0" max="60" value="0"
                                 step="1" oninput="syncValveDurationFromInput()">
                             <span class="num-unit">min</span>
                             <button class="step-btn" onclick="stepValveDuration(1)">+</button>
                         </div>
-                        <input type="range" id="vDurationSlider" min="0" max="60" value="15" step="1"
+                        <input type="range" id="vDurationSlider" min="0" max="60" value="0" step="1"
                             oninput="syncValveDurationFromSlider()">
                         <div class="presets-row">
-                            <button class="preset-btn" id="vPre0" onclick="setValveDuration(0)">0m</button>
+                            <button class="preset-btn active-preset" id="vPre0" onclick="setValveDuration(0)">0m</button>
                             <button class="preset-btn" id="vPre5" onclick="setValveDuration(5)">5m</button>
-                            <button class="preset-btn active-preset" id="vPre15"
+                            <button class="preset-btn" id="vPre15"
                                 onclick="setValveDuration(15)">15m</button>
                             <button class="preset-btn" id="vPre30" onclick="setValveDuration(30)">30m</button>
                         </div>
@@ -917,22 +917,22 @@
                             <span
                                 style="font-size:.75rem;font-weight:700;color:rgba(255,255,255,0.6);text-transform:uppercase">Damper
                                 Timer (Hold Duration)</span>
-                            <span id="cDurationVal" class="val" style="color:var(--primary);font-weight:700">30
+                            <span id="cDurationVal" class="val" style="color:var(--primary);font-weight:700">0
                                 min</span>
                         </div>
                         <div class="precision-control">
                             <button class="step-btn" onclick="stepDamperDuration(-1)">−</button>
-                            <input type="number" id="cDurationInput" class="num-input" min="0" max="60" value="30"
+                            <input type="number" id="cDurationInput" class="num-input" min="0" max="60" value="0"
                                 step="1" oninput="syncDamperDurationFromInput()">
                             <span class="num-unit">min</span>
                             <button class="step-btn" onclick="stepDamperDuration(1)">+</button>
                         </div>
-                        <input type="range" id="cDurationSlider" min="0" max="60" value="30" step="1"
+                        <input type="range" id="cDurationSlider" min="0" max="60" value="0" step="1"
                             oninput="syncDamperDurationFromSlider()">
                         <div class="presets-row">
-                            <button class="preset-btn" id="cPre0" onclick="setDamperDuration(0)">0m</button>
+                            <button class="preset-btn active-preset" id="cPre0" onclick="setDamperDuration(0)">0m</button>
                             <button class="preset-btn" id="cPre15" onclick="setDamperDuration(15)">15m</button>
-                            <button class="preset-btn active-preset" id="cPre30"
+                            <button class="preset-btn" id="cPre30"
                                 onclick="setDamperDuration(30)">30m</button>
                             <button class="preset-btn" id="cPre60" onclick="setDamperDuration(60)">60m</button>
                         </div>
@@ -950,16 +950,16 @@
                 </div>
                 <div id="sleepSec" class="dynamic-section" style="flex-direction:column;gap:15px">
                     <div>
-                        <div class="label-row"><span>DeepSleep Duration</span><span id="sVal" class="val">-- min</span>
+                        <div class="label-row"><span>DeepSleep Duration</span><span id="sVal" class="val">0 min</span>
                         </div>
                         <div class="precision-control">
                             <button class="step-btn" onclick="stepSleepDuration(-1)">-</button>
-                            <input type="number" id="sInput" class="num-input" min="0" max="360" value="30"
+                            <input type="number" id="sInput" class="num-input" min="0" max="360" value="0"
                                 step="1" oninput="syncSleepDurationFromInput()">
                             <span class="num-unit">min</span>
                             <button class="step-btn" onclick="stepSleepDuration(1)">+</button>
                         </div>
-                        <input type="range" id="sSlider" min="0" max="360" value="30" step="1" oninput="syncSleepDurationFromSlider()">
+                        <input type="range" id="sSlider" min="0" max="360" value="0" step="1" oninput="syncSleepDurationFromSlider()">
                     </div>
                     <label class="toggle-row toggle-danger">
                         <span style="font-size:.85rem;font-weight:700;color:#ff4d82;text-transform:uppercase">Immediate
@@ -1368,10 +1368,6 @@
                 if (sInput) {
                     sInput.min = sSlider.min;
                     sInput.max = sSlider.max;
-                }
-                if (sysCfg.DEEPSLEEP_DEFAULT_TIME !== undefined) {
-                    sSlider.value = Math.round(sysCfg.DEEPSLEEP_DEFAULT_TIME / 60);
-                    if (sInput) sInput.value = sSlider.value;
                 }
                 updateSleepVal();
             }
@@ -1833,7 +1829,7 @@
         // ─── IRRIGATION DURATION SLIDER & STEPPER (0 - 60 min) ───
         function clampValveDuration(val) {
             let n = parseInt(val);
-            if (isNaN(n)) return 15;
+            if (isNaN(n)) return 0;
             return Math.max(0, Math.min(60, n));
         }
 
@@ -1878,7 +1874,7 @@
         // ─── DAMPER DURATION SLIDER & STEPPER (0 - 60 min) ───
         function clampDamperDuration(val) {
             let n = parseInt(val);
-            if (isNaN(n)) return 30;
+            if (isNaN(n)) return 0;
             return Math.max(0, Math.min(60, n));
         }
 
