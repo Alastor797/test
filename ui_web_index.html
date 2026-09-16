@@ -3187,8 +3187,10 @@
             }
 
         if (telemetryApiUrl || telemetryFallbackApiUrl) {
-                runTelemetryPoll();
-                setInterval(runTelemetryPoll, 2500);
+                setTimeout(function() {
+                    runTelemetryPoll();
+                    setInterval(runTelemetryPoll, 2500);
+                }, 800);
             } else {
                 isLiveConnected = false;
                 renderChart();
