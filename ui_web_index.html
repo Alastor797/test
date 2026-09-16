@@ -1691,6 +1691,44 @@
                 return;
             }
 
+            // Durations validation across the 3 cases
+            const parsedSleep = parseInt(document.getElementById('sSlider').value);
+            const sleepMinutes = isNaN(parsedSleep) ? 0 : parsedSleep;
+            const parsedV = parseInt(document.getElementById('vDurationInput').value);
+            const valveMinutes = isNaN(parsedV) ? 0 : parsedV;
+            const parsedD = parseInt(document.getElementById('cDurationInput').value);
+            const damperMinutes = isNaN(parsedD) ? 0 : parsedD;
+
+            // Case 1: Only Actuators
+            if (modeControl === 1 && modeSleep === 0) {
+                if (valveMinutes === 0 && damperMinutes === 0) {
+                    btn.disabled = true;
+                    btn.textContent = 'SET ACTUATOR TIME > 0m';
+                    el.innerHTML = '🎯 ' + parts.join(' | ') + ' (' + totalSel + ' node' + (totalSel > 1 ? 's' : '') + ') — <em style="color:#ff6b6b">Actuator hold time must be > 0 min.</em>';
+                    return;
+                }
+            }
+
+            // Case 2: Only Sleep
+            if (modeControl === 0 && modeSleep === 1) {
+                if (sleepMinutes === 0) {
+                    btn.disabled = true;
+                    btn.textContent = 'SET SLEEP TIME > 0m';
+                    el.innerHTML = '🎯 ' + parts.join(' | ') + ' (' + totalSel + ' node' + (totalSel > 1 ? 's' : '') + ') — <em style="color:#ff6b6b">Sleep duration must be > 0 min.</em>';
+                    return;
+                }
+            }
+
+            // Case 3: Both Actuators & Sleep
+            if (modeControl === 1 && modeSleep === 1) {
+                if (valveMinutes === 0 && damperMinutes === 0 && sleepMinutes === 0) {
+                    btn.disabled = true;
+                    btn.textContent = 'SET DURATION > 0m';
+                    el.innerHTML = '🎯 ' + parts.join(' | ') + ' (' + totalSel + ' node' + (totalSel > 1 ? 's' : '') + ') — <em style="color:#ff6b6b">At least one action duration must be > 0 min.</em>';
+                    return;
+                }
+            }
+
             btn.disabled = false;
             let modeSuffix = "";
             if (modeControl === 1 && modeSleep === 1) modeSuffix = " (MANUAL ACT + SLEEP)";
@@ -1741,6 +1779,7 @@
 
         function toggleWarning() {
             document.getElementById('alertBox').style.display = document.getElementById('forceCheck').checked ? 'block' : 'none';
+            updateSummary();
         }
 
         function updateRelayLabel() {
@@ -1804,6 +1843,7 @@
             document.getElementById('vDurationSlider').value = val;
             document.getElementById('vDurationVal').innerText = val + ' min';
             highlightValveDurationPreset(val);
+            updateSummary();
         }
 
         function syncValveDurationFromSlider() {
@@ -1811,6 +1851,7 @@
             document.getElementById('vDurationInput').value = val;
             document.getElementById('vDurationVal').innerText = val + ' min';
             highlightValveDurationPreset(val);
+            updateSummary();
         }
 
         function stepValveDuration(amount) {
@@ -1824,6 +1865,7 @@
             document.getElementById('vDurationSlider').value = val;
             document.getElementById('vDurationVal').innerText = val + ' min';
             highlightValveDurationPreset(val);
+            updateSummary();
         }
 
         function highlightValveDurationPreset(val) {
@@ -1846,6 +1888,7 @@
             document.getElementById('cDurationSlider').value = val;
             document.getElementById('cDurationVal').innerText = val + ' min';
             highlightDamperDurationPreset(val);
+            updateSummary();
         }
 
         function syncDamperDurationFromSlider() {
@@ -1853,6 +1896,7 @@
             document.getElementById('cDurationInput').value = val;
             document.getElementById('cDurationVal').innerText = val + ' min';
             highlightDamperDurationPreset(val);
+            updateSummary();
         }
 
         function stepDamperDuration(amount) {
@@ -1866,6 +1910,7 @@
             document.getElementById('cDurationSlider').value = val;
             document.getElementById('cDurationVal').innerText = val + ' min';
             highlightDamperDurationPreset(val);
+            updateSummary();
         }
 
         function highlightDamperDurationPreset(val) {
@@ -1890,6 +1935,7 @@
             const val = clampSleepDuration(raw);
             document.getElementById('sSlider').value = val;
             document.getElementById('sVal').innerText = val + ' min';
+            updateSummary();
         }
 
         function syncSleepDurationFromSlider() {
@@ -1898,6 +1944,7 @@
             const sInput = document.getElementById('sInput');
             if (sInput) sInput.value = val;
             document.getElementById('sVal').innerText = val + ' min';
+            updateSummary();
         }
 
         function stepSleepDuration(amount) {
@@ -1912,6 +1959,7 @@
             if (sInput) sInput.value = val;
             document.getElementById('sSlider').value = val;
             document.getElementById('sVal').innerText = val + ' min';
+            updateSummary();
         }
 
         function updateSleepVal() {
@@ -1925,6 +1973,24 @@
                 return;
             }
 
+            const parsedSleep = parseInt(document.getElementById('sSlider').value);
+            const sleepMinutes = isNaN(parsedSleep) ? 0 : parsedSleep;
+            const parsedV = parseInt(document.getElementById('vDurationInput').value);
+            const valveMinutes = isNaN(parsedV) ? 0 : parsedV;
+            const parsedD = parseInt(document.getElementById('cDurationInput').value);
+            const damperMinutes = isNaN(parsedD) ? 0 : parsedD;
+
+            // Guard: Duration validations across the 3 cases
+            if (modeControl === 1 && modeSleep === 0 && valveMinutes === 0 && damperMinutes === 0) {
+                return;
+            }
+            if (modeControl === 0 && modeSleep === 1 && sleepMinutes === 0) {
+                return;
+            }
+            if (modeControl === 1 && modeSleep === 1 && valveMinutes === 0 && damperMinutes === 0 && sleepMinutes === 0) {
+                return;
+            }
+
             const isForce = (modeSleep === 1 && document.getElementById('forceCheck').checked);
 
             let flags = 0;
@@ -1934,13 +2000,6 @@
             if (isForce) {
                 flags |= 0b10; // Bit 1: Forced DeepSleep
             }
-
-            const parsedSleep = parseInt(document.getElementById('sSlider').value);
-            const sleepMinutes = isNaN(parsedSleep) ? 0 : parsedSleep;
-            const parsedV = parseInt(document.getElementById('vDurationInput').value);
-            const valveMinutes = isNaN(parsedV) ? 15 : parsedV;
-            const parsedD = parseInt(document.getElementById('cDurationInput').value);
-            const damperMinutes = isNaN(parsedD) ? 30 : parsedD;
 
             const s_v = (modeControl === 1) ? (valveMinutes * 60) : 0;
             const s_c = (modeControl === 1) ? (damperMinutes * 60) : 0;
