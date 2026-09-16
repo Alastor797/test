@@ -1925,15 +1925,14 @@
                 return;
             }
 
+            const isForce = (modeSleep === 1 && document.getElementById('forceCheck').checked);
+
             let flags = 0;
-            if (modeControl === 1 && modeSleep === 1) {
-                flags = 3; // 0b11: Both (Actuators first, then DeepSleep)
-            } else if (modeControl === 1) {
-                flags = 1; // 0b01: Actuators only
-            } else if (modeSleep === 1) {
-                flags = 2; // 0b10: DeepSleep only
-            } else {
-                flags = 0; // 0b00: Autonomous
+            if (modeControl === 1) {
+                flags |= 0b01; // Bit 0: Manual Actuators
+            }
+            if (isForce) {
+                flags |= 0b10; // Bit 1: Forced DeepSleep
             }
 
             const parsedSleep = parseInt(document.getElementById('sSlider').value);
@@ -1981,7 +1980,6 @@
                 cmdId = 0x00; // CMD_NOP (Autonomous)
             }
 
-            const isForce = (modeSleep === 1 && document.getElementById('forceCheck').checked);
             const data = {
                 flags: flags,
                 mode_control: modeControl === 1 ? "MANUAL" : "AUTOMATIC",
