@@ -1655,6 +1655,33 @@
             if (window.navigator.vibrate) window.navigator.vibrate(10);
         }
 
+        function getOrderCoordinatorSid(item) {
+            if (!item) return null;
+            if (item.coordinator_sid !== undefined && item.coordinator_sid !== null) {
+                return Number(item.coordinator_sid);
+            }
+            if (item.coordinator_sids && item.coordinator_sids.length > 0) {
+                return Number(item.coordinator_sids[0]);
+            }
+            if (item.targets) {
+                const match = String(item.targets).match(/C(\d+)/i);
+                if (match) return Number(match[1]);
+            }
+            return null;
+        }
+
+        function isOrderActive(item) {
+            if (!item) return false;
+            const s = (item.status || '').toUpperCase();
+            return s === 'TRANSMITTING' || s === 'DELIVERED' || s === 'EXECUTING';
+        }
+
+        function isOrderWaiting(item) {
+            if (!item) return false;
+            const s = (item.status || '').toUpperCase();
+            return s === 'WAITING' || s === 'PENDING';
+        }
+
         function updateSummary() {
             const el = document.getElementById('selSummary');
             const btn = document.getElementById('btnApply');
@@ -1721,6 +1748,28 @@
                     btn.disabled = true;
                     btn.textContent = 'SET DURATION > 0m';
                     el.innerHTML = '🎯 ' + parts.join(' | ') + ' (' + totalSel + ' node' + (totalSel > 1 ? 's' : '') + ') — <em style="color:#ff6b6b">At least one action duration must be > 0 min.</em>';
+                    return;
+                }
+            }
+
+            // Guard: Strict limit of 2 orders per coordinator (1 working, 1 waiting in queue)
+            // If there is already >= 1 order in queue (WAITING) or active + waiting >= 2, block SEND COMMAND
+            const history = window._latestCmdHistory || [];
+            for (const coordinator_sid of coordinator_sids) {
+                const coordOrders = history.filter(item => {
+                    if (item.status === 'SUCCESS' || item.status === 'COMPLETED' || item.status === 'FAILED' || item.status === 'CANCELLED') {
+                        return false;
+                    }
+                    return getOrderCoordinatorSid(item) === coordinator_sid;
+                });
+
+                const waitingOrders = coordOrders.filter(isOrderWaiting);
+                const activeOrders = coordOrders.filter(isOrderActive);
+
+                if (waitingOrders.length >= 1 || (activeOrders.length + waitingOrders.length >= 2)) {
+                    btn.disabled = true;
+                    btn.textContent = `QUEUE FULL (C${coordinator_sid}: 1 RUNNING, 1 WAITING)`;
+                    el.innerHTML = '🎯 ' + parts.join(' | ') + ' (' + totalSel + ' node' + (totalSel > 1 ? 's' : '') + ') — <em style="color:#ffb703">⚠️ Queue full for C' + coordinator_sid + ' (Max 2: 1 working, 1 waiting). Cancel an order below to send a new one.</em>';
                     return;
                 }
             }
@@ -1969,6 +2018,24 @@
                 return;
             }
 
+            // Guard: Strict limit of 2 orders per coordinator (1 working, 1 waiting in queue)
+            const coordinator_sids = Object.keys(selection).map(Number).sort();
+            const currentHistory = window._latestCmdHistory || [];
+            for (const coordinator_sid of coordinator_sids) {
+                const coordOrders = currentHistory.filter(item => {
+                    if (item.status === 'SUCCESS' || item.status === 'COMPLETED' || item.status === 'FAILED' || item.status === 'CANCELLED') {
+                        return false;
+                    }
+                    return getOrderCoordinatorSid(item) === coordinator_sid;
+                });
+                const waitingOrders = coordOrders.filter(isOrderWaiting);
+                const activeOrders = coordOrders.filter(isOrderActive);
+                if (waitingOrders.length >= 1 || (activeOrders.length + waitingOrders.length >= 2)) {
+                    updateSummary();
+                    return;
+                }
+            }
+
             const parsedSleep = parseInt(document.getElementById('sSlider').value);
             const sleepMinutes = isNaN(parsedSleep) ? 0 : parsedSleep;
             const parsedV = parseInt(document.getElementById('vDurationInput').value);
@@ -2084,12 +2151,15 @@
                 _created: Date.now(),
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                 targets: targetDescs,
+                coordinator_sid: targets.length > 0 ? targets[0].coordinator_sid : null,
+                coordinator_sids: targets.map(t => t.coordinator_sid),
                 details: detailsDesc,
                 status: 'WAITING',
                 status_label: 'WAITING ⏳ (In Queue)'
             };
             window._latestCmdHistory = [optCmd, ...(window._latestCmdHistory || [])].slice(0, 10);
             renderCommandHistory(window._latestCmdHistory);
+            updateSummary();
 
             // Dispatch directed command in pure binary via REST API (application/octet-stream)
             let baseUrl = (activeApiUrl || telemetryApiUrl || telemetryFallbackApiUrl || '');
@@ -2107,7 +2177,7 @@
                             btn.style.opacity = "1";
                         }, 1600);
                     } else {
-                        btn.innerText = "DISPATCH FAILED ⚠️";
+                        btn.innerText = (resp.status === 429) ? "QUEUE FULL ⚠️" : "DISPATCH FAILED ⚠️";
                         setTimeout(() => {
                             updateSummary();
                             btn.style.opacity = "1";
@@ -2868,11 +2938,13 @@
                     borderColor = 'rgba(0,240,255,0.4)';
                     textColor = '#00f0ff';
                     icon = '⚙️';
+                    canCancel = true;
                 } else if (item.status === 'DELIVERED') {
                     badgeClass = 'rgba(255,183,3,0.15)';
                     borderColor = 'rgba(255,183,3,0.4)';
                     textColor = '#ffb703';
                     icon = '📥';
+                    canCancel = true;
                 } else if (item.status === 'FAILED') {
                     badgeClass = 'rgba(255,42,95,0.15)';
                     borderColor = 'rgba(255,42,95,0.4)';
@@ -2934,6 +3006,7 @@
                         entry.status = 'CANCELLED';
                         entry.status_label = 'CANCELLED 🚫';
                         renderCommandHistory(window._latestCmdHistory);
+                        updateSummary();
                     }
                 }
             } catch (err) {
@@ -3234,6 +3307,7 @@
                     }
                     renderChart();
                     renderCommandHistory(cmdHistory);
+                    updateSummary();
                 } catch (err) {
                     console.error("Error processing telemetry payload:", err);
                 } finally {
