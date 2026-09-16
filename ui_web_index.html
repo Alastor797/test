@@ -1703,8 +1703,8 @@
             if (modeControl === 1 && modeSleep === 0) {
                 if (valveMinutes === 0 && damperMinutes === 0) {
                     btn.disabled = true;
-                    btn.textContent = 'SET ACTUATOR TIME > 0m';
-                    el.innerHTML = '🎯 ' + parts.join(' | ') + ' (' + totalSel + ' node' + (totalSel > 1 ? 's' : '') + ') — <em style="color:#ff6b6b">Actuator hold time must be > 0 min.</em>';
+                    btn.textContent = 'SET AT LEAST 1 ACTUATOR TIME > 0m';
+                    el.innerHTML = '🎯 ' + parts.join(' | ') + ' (' + totalSel + ' node' + (totalSel > 1 ? 's' : '') + ') — <em style="color:#ff6b6b">At least one actuator hold time must be > 0 min.</em>';
                     return;
                 }
             }
@@ -2089,8 +2089,8 @@
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                 targets: targetDescs,
                 details: detailsDesc,
-                status: 'TRANSMITTING',
-                status_label: 'TRANSMITTING 📡'
+                status: 'WAITING',
+                status_label: 'WAITING ⏳ (In Queue)'
             };
             window._latestCmdHistory = [optCmd, ...(window._latestCmdHistory || [])].slice(0, 10);
             renderCommandHistory(window._latestCmdHistory);
